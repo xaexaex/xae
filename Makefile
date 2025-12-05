@@ -23,7 +23,7 @@ ASMFLAGS = -f elf32
 # Source files
 BOOT_SRC = boot/boot.asm
 KERNEL_ENTRY = kernel/entry.asm
-KERNEL_C_SRC = $(wildcard kernel/*.c kernel/drivers/*.c kernel/mm/*.c kernel/fs/*.c kernel/lib/*.c kernel/shell/*.c)
+KERNEL_C_SRC = $(wildcard kernel/*.c kernel/drivers/*.c kernel/mm/*.c kernel/fs/*.c kernel/lib/*.c kernel/shell/*.c kernel/editor/*.c)
 
 # Object files
 KERNEL_ENTRY_OBJ = build/entry.o
@@ -92,6 +92,11 @@ build/%.o: kernel/lib/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/%.o: kernel/shell/%.c
+	@mkdir -p build
+	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/%.o: kernel/editor/%.c
 	@mkdir -p build
 	@echo "Compiling $<..."
 	$(CC) $(CFLAGS) -c $< -o $@

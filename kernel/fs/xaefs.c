@@ -61,7 +61,7 @@ void xaefs_init(void)
     vga_print("  - Creating XAE hierarchy: /sys /usr /tmp\n");
     
     /* Create /sys (system files) */
-    uint32_t idx = xaefs_create("sys", XAEFS_FILE_DIRECTORY, XAEFS_PRIORITY_HIGH);
+    int idx = xaefs_create("sys", XAEFS_FILE_DIRECTORY, XAEFS_PRIORITY_HIGH);
     if (idx >= 0) inode_table[idx].parent_inode = 0;
     
     /* Create /usr (user files) */
