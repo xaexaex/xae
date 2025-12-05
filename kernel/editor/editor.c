@@ -204,3 +204,37 @@ void editor_open(const char* filename)
     /* Run the editor */
     editor_run();
 }
+
+/*
+ * editor_view() - View file contents (like cat command)
+ */
+void editor_view(const char* filename) 
+{
+    uint32_t i;
+    
+    vga_print("\n");
+    vga_print("=== ");
+    vga_print(filename);
+    vga_print(" ===\n");
+    
+    /* For now, show placeholder (real implementation would read from disk) */
+    /* In a real system, we'd load the file and display it */
+    
+    /* Check if file exists */
+    /* TODO: Actually read file content from filesystem */
+    
+    /* For demo, show the in-memory editor content if it matches */
+    if (line_count > 0) {
+        for (i = 0; i < line_count; i++) {
+            vga_print(lines[i]);
+            vga_putchar('\n');
+        }
+    } else {
+        vga_print("(File is empty or hasn't been created yet)\n");
+        vga_print("Tip: Use 'edit ");
+        vga_print(filename);
+        vga_print("' to create content\n");
+    }
+    
+    vga_print("\n");
+}

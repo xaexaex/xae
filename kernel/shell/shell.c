@@ -47,6 +47,7 @@ static void cmd_help(void)
     vga_print("  rm <name>         - Remove file\n");
     vga_print("  ls                - List files in current directory\n");
     vga_print("  edit <file>       - Open text editor\n");
+    vga_print("  fun <file>        - View file contents\n");
     vga_print("  tag <file> <tag>  - Add tag to file\n");
     vga_print("  find <tag>        - Find files by tag\n");
     vga_print("  pri <file> <lvl>  - Set priority (low/mid/high/max)\n");
@@ -249,6 +250,19 @@ static void cmd_edit(char* filename)
 }
 
 /*
+ * cmd_fun() - View file contents (like cat)
+ */
+static void cmd_fun(char* filename) 
+{
+    if (!filename) {
+        vga_print("Usage: fun <filename>\n");
+        return;
+    }
+    
+    editor_view(filename);
+}
+
+/*
  * cmd_find() - Find files by tag
  */
 static void cmd_find(char* tag) 
@@ -351,6 +365,9 @@ static void parse_and_execute(char* cmd)
     }
     else if (strcmp(token, "edit") == 0) {
         cmd_edit(arg1);
+    }
+    else if (strcmp(token, "fun") == 0) {
+        cmd_fun(arg1);
     }
     else if (strcmp(token, "ver") == 0) {
         vga_print("Command 'ver' not yet implemented\n");

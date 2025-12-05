@@ -20,5 +20,6 @@
 void editor_init(void);
 void editor_open(const char* filename);
 void editor_run(void);
+void editor_view(const char* filename);  /* View file contents */
 
 #endif /* EDITOR_H */
