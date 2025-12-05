@@ -11,6 +11,8 @@
 #include "include/string.h"
 #include "include/memory.h"
 #include "include/xaefs.h"
+#include "include/keyboard.h"
+#include "include/shell.h"
 
 /*
  * kernel_main() - The first C function that runs
@@ -81,15 +83,17 @@ void kernel_main(void)
     vga_print("2. Tagging System: Files can have multiple tags\n");
     vga_print("3. Version Control: Built-in versioning support\n");
     
-    vga_print("\nReady to accept commands.\n\n");
-    vga_print("> ");
+    /* Initialize keyboard and shell */
+    vga_print("\n[..] Initializing keyboard...\n");
+    keyboard_init();
+    vga_print("[OK] Keyboard ready\n");
     
-    /* STEP 5: Main kernel loop
-     * WHY: The kernel needs to keep running and respond to events
-     * HOW: For now, we just loop forever. Later we'll add keyboard input */
+    /* Start interactive shell */
+    shell_init();
+    shell_run();
+    
+    /* Should never reach here */
     while(1) {
-        // TODO: Add keyboard driver and command processing
-        // For now, just halt to save CPU
         __asm__ __volatile__("hlt");
     }
 }

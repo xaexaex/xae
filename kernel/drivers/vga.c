@@ -11,6 +11,11 @@ static uint16_t* vga_buffer;    /* Pointer to VGA memory */
 static uint32_t vga_index;      /* Current cursor position (0-1999) */
 static uint8_t vga_color;       /* Current color attribute */
 
+/* I/O port functions for cursor control */
+static inline void outb(uint16_t port, uint8_t val) {
+    __asm__ __volatile__("outb %0, %1" : : "a"(val), "Nd"(port));
+}
+
 /*
  * vga_make_color() - Create a color attribute byte
  * 
@@ -36,6 +41,26 @@ static inline uint16_t vga_make_entry(char c, uint8_t color)
 }
 
 /*
+ * vga_update_cursor() - Update hardware cursor position
+ * 
+ * WHAT: Move the blinking cursor to current position
+ * WHY: So users can see where they're typing
+ * HOW: Write position to VGA controller ports
+ */
+void vga_update_cursor(void) 
+{
+    uint16_t pos = vga_index;
+    
+    /* Cursor position: low byte */
+    outb(0x3D4, 0x0F);
+    outb(0x3D5, (uint8_t)(pos & 0xFF));
+    
+    /* Cursor position: high byte */
+    outb(0x3D4, 0x0E);
+    outb(0x3D5, (uint8_t)((pos >> 8) & 0xFF));
+}
+
+/*
  * vga_init() - Initialize VGA driver
  * 
  * WHAT: Set up the VGA driver for text output
@@ -47,6 +72,7 @@ void vga_init(void)
     vga_buffer = (uint16_t*)VGA_MEMORY;
     vga_index = 0;
     vga_color = vga_make_color(VGA_LIGHT_GREY, VGA_BLACK);
+    vga_update_cursor();
 }
 
 /*
@@ -66,6 +92,7 @@ void vga_clear(void)
     }
     
     vga_index = 0;
+    vga_update_cursor();
 }
 
 /*
@@ -92,6 +119,7 @@ static void vga_scroll(void)
     
     /* Move cursor to start of last line */
     vga_index = (VGA_HEIGHT - 1) * VGA_WIDTH;
+    vga_update_cursor();
 }
 
 /*
@@ -112,20 +140,29 @@ void vga_putchar(char c)
         /* Carriage return: move to start of current line */
         vga_index = (vga_index / VGA_WIDTH) * VGA_WIDTH;
     }
+    else if (c == '\b') {
+        /* Backspace: move back one position */
+        if (vga_index > 0) {
+            vga_index--;
+        }
+    }
     else if (c == '\t') {
         /* Tab: move to next 4-space boundary */
         vga_index = (vga_index + 4) & ~(4 - 1);
     }
-    else {
-        /* Regular character: write to VGA memory */
+    else if (c >= 32 && c <= 126) {
+        /* Regular printable character: write to VGA memory */
         vga_buffer[vga_index] = vga_make_entry(c, vga_color);
         vga_index++;
     }
+    /* Ignore non-printable characters */
     
     /* If we've gone past the screen, scroll up */
     if (vga_index >= VGA_WIDTH * VGA_HEIGHT) {
         vga_scroll();
     }
+    
+    vga_update_cursor();
 }
 
 /*

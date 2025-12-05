@@ -128,5 +128,6 @@ int xaefs_list_dir(const char* path);
 int xaefs_set_priority(const char* path, uint8_t priority);
 int xaefs_add_tag(const char* path, const char* tag);
 int xaefs_create_version(const char* path);
+void xaefs_find_by_tag(const char* tag);
 
 #endif /* XAEFS_H */

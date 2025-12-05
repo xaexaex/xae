@@ -83,3 +83,81 @@ int memcmp(const void* s1, const void* s2, size_t n)
     
     return 0;
 }
+
+/*
+ * strcmp() - Compare two strings
+ * 
+ * WHAT: Compare two null-terminated strings
+ * WHY: For command parsing and string comparison
+ * HOW: Compare character by character
+ * RETURNS: 0 if equal, <0 if s1 < s2, >0 if s1 > s2
+ */
+int strcmp(const char* s1, const char* s2) 
+{
+    while (*s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+    }
+    return *(const uint8_t*)s1 - *(const uint8_t*)s2;
+}
+
+/*
+ * strcpy() - Copy string
+ * 
+ * WHAT: Copy source string to destination
+ * WHY: For duplicating strings
+ * HOW: Copy character by character including null terminator
+ */
+void strcpy(char* dest, const char* src) 
+{
+    while (*src) {
+        *dest++ = *src++;
+    }
+    *dest = '\0';
+}
+
+/*
+ * strtok() - Tokenize string
+ * 
+ * WHAT: Split string by delimiter
+ * WHY: For parsing commands with arguments
+ * HOW: Find delimiter, replace with null, return token
+ * RETURNS: Pointer to next token, or NULL if no more tokens
+ */
+static char* strtok_state = NULL;
+
+char* strtok(char* str, char delim) 
+{
+    char* start;
+    
+    if (str != NULL) {
+        strtok_state = str;
+    }
+    
+    if (strtok_state == NULL || *strtok_state == '\0') {
+        return NULL;
+    }
+    
+    /* Skip leading delimiters */
+    while (*strtok_state == delim) {
+        strtok_state++;
+    }
+    
+    if (*strtok_state == '\0') {
+        return NULL;
+    }
+    
+    start = strtok_state;
+    
+    /* Find next delimiter */
+    while (*strtok_state != '\0' && *strtok_state != delim) {
+        strtok_state++;
+    }
+    
+    if (*strtok_state != '\0') {
+        *strtok_state = '\0';
+        strtok_state++;
+    }
+    
+    return start;
+}

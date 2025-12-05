@@ -31,7 +31,7 @@ start:
     xor bx, bx          ; ES:BX = 0x1000:0x0000 (physical address 0x10000)
 
     mov ah, 0x02        ; BIOS function: Read Sectors
-    mov al, 15          ; Read 15 sectors (about 7.5KB for our kernel)
+    mov al, 30          ; Read 30 sectors (about 15KB for our kernel with shell)
     mov ch, 0           ; Cylinder 0
     mov cl, 2           ; Start at sector 2 (sector 1 is this bootloader)
     mov dh, 0           ; Head 0

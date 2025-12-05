@@ -230,6 +230,53 @@ int xaefs_set_priority(const char* path, uint8_t priority)
 }
 
 /*
+ * xaefs_find_by_tag() - Find files by tag (UNIQUE FEATURE!)
+ * 
+ * WHAT: Search for all files with a specific tag
+ * WHY: To use the tagging system for file discovery
+ * HOW: Scan all inodes, check their tags, print matches
+ */
+void xaefs_find_by_tag(const char* tag) 
+{
+    uint32_t i, j, k;
+    uint8_t found = 0;
+    
+    vga_print("\nFiles tagged with '");
+    vga_print(tag);
+    vga_print("':\n");
+    
+    /* Loop through all inodes */
+    for (i = 1; i < XAEFS_MAX_FILES; i++) {  /* Skip root at 0 */
+        if (inode_table[i].inode_num != 0) {
+            /* Check each tag in this file */
+            for (j = 0; j < inode_table[i].tag_count; j++) {
+                /* Compare tag strings */
+                uint8_t match = 1;
+                for (k = 0; tag[k] != '\0'; k++) {
+                    if (tag[k] != inode_table[i].tags[j][k]) {
+                        match = 0;
+                        break;
+                    }
+                }
+                
+                if (match && inode_table[i].tags[j][k] == '\0') {
+                    /* Found a match! */
+                    vga_print("  - ");
+                    vga_print(inode_table[i].name);
+                    vga_print("\n");
+                    found = 1;
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (!found) {
+        vga_print("  (no files found)\n");
+    }
+}
+
+/*
  * xaefs_list_dir() - List files in a directory
  * 
  * WHAT: Show all files in the filesystem
