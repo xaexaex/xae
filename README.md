@@ -38,3 +38,18 @@ Each component is documented with inline comments explaining:
 - WHAT the code does
 - WHY it's necessary
 - HOW it works at a low level
+
+## Unique Features
+
+XAE-FS includes features not found in traditional filesystems:
+- **File Priorities** - Critical, High, Normal, Low priority levels
+- **Multi-Tag System** - Gmail-style tags for flexible organization
+- **Built-in Versioning** - Automatic file version tracking
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
