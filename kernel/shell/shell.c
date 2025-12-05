@@ -11,9 +11,13 @@
 #include "include/xaefs.h"
 
 #define CMD_BUFFER_SIZE 256
+#define PATH_BUFFER_SIZE 128
 
 /* Command buffer */
 static char cmd_buffer[CMD_BUFFER_SIZE];
+
+/* Current directory path */
+static char current_path[PATH_BUFFER_SIZE] = "/";
 
 /*
  * shell_init() - Initialize the shell
@@ -21,8 +25,12 @@ static char cmd_buffer[CMD_BUFFER_SIZE];
 void shell_init(void) 
 {
     vga_print("\n");
-    vga_print("XAE Shell v1.0\n");
-    vga_print("Type 'help' for available commands\n");
+    vga_print("========================================\n");
+    vga_print("XAE Shell v1.0 - Interactive Mode\n");
+    vga_print("========================================\n");
+    vga_print("NOTE: Files exist in RAM only.\n");
+    vga_print("They will be lost when you power off!\n");
+    vga_print("Type 'help' for available commands.\n");
     vga_print("\n");
 }
 
@@ -32,9 +40,11 @@ void shell_init(void)
 static void cmd_help(void) 
 {
     vga_print("\nAvailable Commands:\n");
-    vga_print("  mk <name>         - Create file or folder\n");
+    vga_print("  mk <name>         - Create file\n");
+    vga_print("  mk <name>/        - Create folder (add / at end)\n");
+    vga_print("  cd <dir>          - Change directory\n");
     vga_print("  rm <name>         - Remove file\n");
-    vga_print("  ls                - List all files\n");
+    vga_print("  ls                - List files in current directory\n");
     vga_print("  tag <file> <tag>  - Add tag to file\n");
     vga_print("  find <tag>        - Find files by tag\n");
     vga_print("  pri <file> <lvl>  - Set priority (low/mid/high/max)\n");
@@ -52,26 +62,153 @@ static void cmd_help(void)
 static void cmd_mk(char* name) 
 {
     if (!name) {
-        vga_print("Usage: mk <name>\n");
+        vga_print("Usage: mk <name>     (creates file)\n");
+        vga_print("   or: mk <name>/    (creates folder - add / at end)\n");
         return;
     }
     
-    int result = xaefs_create(name, XAEFS_FILE_REGULAR, XAEFS_PRIORITY_NORMAL);
+    /* Check if name ends with / for directory */
+    uint32_t len = 0;
+    while (name[len] != '\0') len++;
+    
+    uint8_t is_dir = 0;
+    if (len > 0 && name[len - 1] == '/') {
+        is_dir = 1;
+        name[len - 1] = '\0';  /* Remove the / */
+    }
+    
+    uint8_t type = is_dir ? XAEFS_FILE_DIRECTORY : XAEFS_FILE_REGULAR;
+    int result = xaefs_create(name, type, XAEFS_PRIORITY_NORMAL);
+    
     if (result >= 0) {
-        vga_print("Created: ");
+        /* Set parent directory */
+        xaefs_set_parent(name, current_path);
+        
+        vga_print("Created ");
+        vga_print(is_dir ? "folder: " : "file: ");
         vga_print(name);
         vga_print("\n");
     } else {
-        vga_print("Error: Could not create file\n");
+        if (result == -2) {
+            vga_print("Error: File system is full\n");
+        } else if (result == -3) {
+            vga_print("Error: File already exists: ");
+            vga_print(name);
+            vga_print("\n");
+        } else {
+            vga_print("Error: Could not create ");
+            vga_print(is_dir ? "folder\n" : "file\n");
+        }
     }
 }
 
 /*
- * cmd_ls() - List files
+ * cmd_ls() - List files in current directory
  */
 static void cmd_ls(void) 
 {
-    xaefs_list_dir("/");
+    xaefs_list_dir(current_path);
+}
+
+/*
+ * cmd_rm() - Remove file or directory
+ */
+static void cmd_rm(char* name) 
+{
+    if (!name) {
+        vga_print("Usage: rm <name>\n");
+        return;
+    }
+    
+    int result = xaefs_delete_in_dir(name, current_path);
+    
+    if (result == 0) {
+        vga_print("Deleted: ");
+        vga_print(name);
+        vga_print("\n");
+    } else {
+        vga_print("Error: File not found or cannot be deleted: ");
+        vga_print(name);
+        vga_print("\n");
+    }
+}
+
+/*
+ * cmd_cd() - Change directory
+ */
+static void cmd_cd(char* dirname) 
+{
+    if (!dirname) {
+        vga_print("Usage: cd <directory>\n");
+        vga_print("   or: cd ..  (go up one level)\n");
+        vga_print("   or: cd /   (go to root)\n");
+        return;
+    }
+    
+    /* Handle special cases */
+    if (strcmp(dirname, "/") == 0) {
+        current_path[0] = '/';
+        current_path[1] = '\0';
+        vga_print("Changed to: /\n");
+        return;
+    }
+    
+    if (strcmp(dirname, "..") == 0) {
+        /* Go up one level */
+        if (strcmp(current_path, "/") == 0) {
+            vga_print("Already at root directory\n");
+            return;
+        }
+        
+        /* Find last / and truncate */
+        int i = 0;
+        while (current_path[i] != '\0') i++;
+        i--;
+        while (i > 0 && current_path[i] != '/') i--;
+        if (i == 0) {
+            current_path[1] = '\0';
+        } else {
+            current_path[i] = '\0';
+        }
+        vga_print("Changed to: ");
+        vga_print(current_path);
+        vga_print("\n");
+        return;
+    }
+    
+    /* Check if directory exists (simplified - assumes it exists) */
+    /* Build new path */
+    char new_path[PATH_BUFFER_SIZE];
+    int i = 0, j = 0;
+    
+    /* Copy current path */
+    while (current_path[i] != '\0' && i < PATH_BUFFER_SIZE - 1) {
+        new_path[j++] = current_path[i++];
+    }
+    
+    /* Add / if needed */
+    if (j > 0 && new_path[j-1] != '/') {
+        new_path[j++] = '/';
+    }
+    
+    /* Add dirname */
+    i = 0;
+    while (dirname[i] != '\0' && j < PATH_BUFFER_SIZE - 1) {
+        new_path[j++] = dirname[i++];
+    }
+    new_path[j] = '\0';
+    
+    /* Update current path */
+    i = 0;
+    while (new_path[i] != '\0' && i < PATH_BUFFER_SIZE - 1) {
+        current_path[i] = new_path[i];
+        i++;
+    }
+    current_path[i] = '\0';
+    
+    vga_print("Changed to: ");
+    vga_print(current_path);
+    vga_print("\n");
 }
 
 /*
@@ -191,8 +328,11 @@ static void parse_and_execute(char* cmd)
     else if (strcmp(token, "clear") == 0) {
         cmd_clear();
     }
+    else if (strcmp(token, "cd") == 0) {
+        cmd_cd(arg1);
+    }
     else if (strcmp(token, "rm") == 0) {
-        vga_print("Command 'rm' not yet implemented\n");
+        cmd_rm(arg1);
     }
     else if (strcmp(token, "ver") == 0) {
         vga_print("Command 'ver' not yet implemented\n");
@@ -220,8 +360,9 @@ static void parse_and_execute(char* cmd)
 void shell_run(void) 
 {
     while (1) {
-        /* Show prompt */
-        vga_print("> ");
+        /* Show prompt with current path */
+        vga_print(current_path);
+        vga_print(" > ");
         
         /* Read command */
         keyboard_readline(cmd_buffer, CMD_BUFFER_SIZE);

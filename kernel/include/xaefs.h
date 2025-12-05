@@ -119,10 +119,12 @@ int xaefs_close(int fd);
 int xaefs_read(int fd, void* buffer, uint32_t size);
 int xaefs_write(int fd, const void* buffer, uint32_t size);
 int xaefs_delete(const char* path);
+int xaefs_delete_in_dir(const char* name, const char* current_dir);
 
 /* Directory operations */
 int xaefs_mkdir(const char* path, uint8_t priority);
 int xaefs_list_dir(const char* path);
+int xaefs_set_parent(const char* filename, const char* parent_path);
 
 /* Unique features */
 int xaefs_set_priority(const char* path, uint8_t priority);

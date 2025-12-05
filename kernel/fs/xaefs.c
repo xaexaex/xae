@@ -56,6 +56,21 @@ void xaefs_init(void)
     vga_print("  - Filesystem magic: 0x58414546\n");
     vga_print("  - Block size: 4096 bytes\n");
     vga_print("  - Total capacity: 4 MB\n");
+    
+    /* Create unique starter hierarchy */
+    vga_print("  - Creating XAE hierarchy: /sys /usr /tmp\n");
+    
+    /* Create /sys (system files) */
+    uint32_t idx = xaefs_create("sys", XAEFS_FILE_DIRECTORY, XAEFS_PRIORITY_HIGH);
+    if (idx >= 0) inode_table[idx].parent_inode = 0;
+    
+    /* Create /usr (user files) */
+    idx = xaefs_create("usr", XAEFS_FILE_DIRECTORY, XAEFS_PRIORITY_NORMAL);
+    if (idx >= 0) inode_table[idx].parent_inode = 0;
+    
+    /* Create /tmp (temporary) */
+    idx = xaefs_create("tmp", XAEFS_FILE_DIRECTORY, XAEFS_PRIORITY_LOW);
+    if (idx >= 0) inode_table[idx].parent_inode = 0;
 }
 
 /*
@@ -102,12 +117,120 @@ static int find_free_inode(void)
 }
 
 /*
+ * find_file_by_name() - Find a file by name (global search)
+ * 
+ * WHAT: Search for a file in the inode table
+ * WHY: Common operation for all file commands
+ * HOW: Compare name strings in all inodes
+ * RETURNS: Pointer to inode, or NULL if not found
+ */
+static struct xaefs_inode* find_file_by_name(const char* name) 
+{
+    uint32_t i, j;
+    
+    for (i = 0; i < XAEFS_MAX_FILES; i++) {
+        if (inode_table[i].inode_num != 0) {
+            /* Compare name */
+            uint32_t match = 1;
+            for (j = 0; name[j] != '\0' && inode_table[i].name[j] != '\0'; j++) {
+                if (name[j] != inode_table[i].name[j]) {
+                    match = 0;
+                    break;
+                }
+            }
+            if (match && name[j] == '\0' && inode_table[i].name[j] == '\0') {
+                return &inode_table[i];
+            }
+        }
+    }
+    
+    return NULL;  /* Not found */
+}
+
+/*
+ * find_file_in_dir() - Find a file in specific directory
+ * 
+ * WHAT: Search for a file by name within a parent directory
+ * WHY: To support proper directory hierarchy
+ * HOW: Match both name AND parent_inode
+ * RETURNS: Pointer to inode, or NULL if not found
+ */
+static struct xaefs_inode* find_file_in_dir(const char* name, uint32_t parent_inode) 
+{
+    uint32_t i, j;
+    
+    for (i = 0; i < XAEFS_MAX_FILES; i++) {
+        if (inode_table[i].inode_num != 0 && inode_table[i].parent_inode == parent_inode) {
+            /* Compare name */
+            uint32_t match = 1;
+            for (j = 0; name[j] != '\0' && inode_table[i].name[j] != '\0'; j++) {
+                if (name[j] != inode_table[i].name[j]) {
+                    match = 0;
+                    break;
+                }
+            }
+            if (match && name[j] == '\0' && inode_table[i].name[j] == '\0') {
+                return &inode_table[i];
+            }
+        }
+    }
+    
+    return NULL;  /* Not found */
+}
+
+/*
+ * find_parent_dir() - Find parent directory inode from path
+ * 
+ * WHAT: Extract and find parent directory
+ * WHY: To support directory hierarchy
+ * HOW: Parse path and find parent dir inode
+ * RETURNS: Parent inode number (0 for root)
+ */
+static uint32_t find_parent_dir(const char* current_dir) 
+{
+    uint32_t i;
+    
+    /* If at root, parent is root */
+    if (strcmp(current_dir, "/") == 0) {
+        return 0;
+    }
+    
+    /* Extract directory name from path */
+    /* For "/usr" we want "usr", for "/sys/bin" we want "bin" */
+    const char* dir_name = current_dir;
+    if (current_dir[0] == '/') {
+        dir_name = current_dir + 1;  /* Skip leading / */
+    }
+    
+    /* For now, only support single-level: /dirname */
+    /* Find last / if any (for multi-level support later) */
+    uint32_t last_slash = 0;
+    for (i = 0; dir_name[i] != '\0'; i++) {
+        if (dir_name[i] == '/') last_slash = i;
+    }
+    if (last_slash > 0) {
+        dir_name = dir_name + last_slash + 1;
+    }
+    
+    /* Find directory by name */
+    struct xaefs_inode* dir = find_file_by_name(dir_name);
+    if (dir && dir->type == XAEFS_FILE_DIRECTORY) {
+        return dir->inode_num;
+    }
+    
+    return 0;  /* Default to root */
+}
+
+/*
  * xaefs_create() - Create a new file
  * 
  * WHAT: Create a new file or directory
  * WHY: Basic filesystem operation
  * HOW: Allocate inode, fill metadata, mark as used
- * RETURNS: Inode number, or -1 on error
+ * RETURNS: Inode number, or negative error code
+ *   -1: filesystem not initialized
+ *   -2: no free inodes (filesystem full)
+ *   -3: file already exists
  */
 int xaefs_create(const char* path, uint8_t type, uint8_t priority) 
 {
@@ -117,14 +240,17 @@ int xaefs_create(const char* path, uint8_t type, uint8_t priority)
     
     if (!fs_initialized) return -1;
     
+    /* Check if file already exists */
+    if (find_file_by_name(path) != NULL) return -3;
+    
     /* Find free inode */
     inode_num = find_free_inode();
-    if (inode_num < 0) return -1;
+    if (inode_num < 0) return -2;
     
     /* Set up inode */
     inode = &inode_table[inode_num];
     inode->inode_num = inode_num;
-    inode->parent_inode = 0;  /* For now, everything goes in root */
+    inode->parent_inode = 0;  /* Will be updated by shell based on current_path */
     inode->size = 0;
     inode->type = type;
     inode->priority = priority;
@@ -140,6 +266,22 @@ int xaefs_create(const char* path, uint8_t type, uint8_t priority)
     superblock.free_inodes--;
     
     return inode_num;
+}
+
+/*
+ * xaefs_set_parent() - Set parent directory for a file
+ * 
+ * WHAT: Update the parent_inode field
+ * WHY: To build directory hierarchy
+ * HOW: Find file and parent, update link
+ */
+int xaefs_set_parent(const char* filename, const char* parent_path) 
+{
+    struct xaefs_inode* file = find_file_by_name(filename);
+    if (!file) return -1;
+    
+    file->parent_inode = find_parent_dir(parent_path);
+    return 0;
 }
 
 /*
@@ -164,27 +306,11 @@ int xaefs_mkdir(const char* path, uint8_t priority)
  */
 int xaefs_add_tag(const char* path, const char* tag) 
 {
-    uint32_t i, j;
-    struct xaefs_inode* inode = NULL;
+    uint32_t i;
+    struct xaefs_inode* inode;
     
     /* Find file by name */
-    for (i = 0; i < XAEFS_MAX_FILES; i++) {
-        if (inode_table[i].inode_num != 0) {
-            /* Simple name comparison (in real FS, we'd parse path) */
-            uint32_t match = 1;
-            for (j = 0; path[j] != '\0' && inode_table[i].name[j] != '\0'; j++) {
-                if (path[j] != inode_table[i].name[j]) {
-                    match = 0;
-                    break;
-                }
-            }
-            if (match && path[j] == '\0' && inode_table[i].name[j] == '\0') {
-                inode = &inode_table[i];
-                break;
-            }
-        }
-    }
-    
+    inode = find_file_by_name(path);
     if (!inode) return -1;  /* File not found */
     if (inode->tag_count >= XAEFS_MAX_TAGS) return -1;  /* Too many tags */
     
@@ -199,6 +325,62 @@ int xaefs_add_tag(const char* path, const char* tag)
 }
 
 /*
+ * xaefs_delete() - Delete a file (global search)
+ * 
+ * WHAT: Remove a file from the filesystem
+ * WHY: Basic file operation
+ * HOW: Clear the inode and free it
+ * RETURNS: 0 on success, -1 on error
+ */
+int xaefs_delete(const char* path) 
+{
+    struct xaefs_inode* inode;
+    
+    /* Find file */
+    inode = find_file_by_name(path);
+    if (!inode) return -1;  /* File not found */
+    
+    /* Don't allow deleting root */
+    if (inode->inode_num == 0) return -1;
+    
+    /* Clear the inode */
+    memset(inode, 0, sizeof(struct xaefs_inode));
+    superblock.free_inodes++;
+    
+    return 0;
+}
+
+/*
+ * xaefs_delete_in_dir() - Delete a file in specific directory
+ * 
+ * WHAT: Remove a file from current directory
+ * WHY: To support directory hierarchy in shell
+ * HOW: Find file by name+parent, then delete
+ * RETURNS: 0 on success, -1 on error
+ */
+int xaefs_delete_in_dir(const char* name, const char* current_dir) 
+{
+    struct xaefs_inode* inode;
+    uint32_t parent_num;
+    
+    /* Get parent directory inode */
+    parent_num = find_parent_dir(current_dir);
+    
+    /* Find file in this directory */
+    inode = find_file_in_dir(name, parent_num);
+    if (!inode) return -1;  /* File not found */
+    
+    /* Don't allow deleting root or directories */
+    if (inode->inode_num == 0) return -1;
+    
+    /* Clear the inode */
+    memset(inode, 0, sizeof(struct xaefs_inode));
+    superblock.free_inodes++;
+    
+    return 0;
+}
+
+/*
  * xaefs_set_priority() - Change file priority (UNIQUE FEATURE!)
  * 
  * WHAT: Set the priority level of a file
@@ -207,26 +389,14 @@ int xaefs_add_tag(const char* path, const char* tag)
  */
 int xaefs_set_priority(const char* path, uint8_t priority) 
 {
-    uint32_t i, j;
+    struct xaefs_inode* inode;
     
     /* Find file */
-    for (i = 0; i < XAEFS_MAX_FILES; i++) {
-        if (inode_table[i].inode_num != 0) {
-            uint32_t match = 1;
-            for (j = 0; path[j] != '\0' && inode_table[i].name[j] != '\0'; j++) {
-                if (path[j] != inode_table[i].name[j]) {
-                    match = 0;
-                    break;
-                }
-            }
-            if (match && path[j] == '\0' && inode_table[i].name[j] == '\0') {
-                inode_table[i].priority = priority;
-                return 0;
-            }
-        }
-    }
+    inode = find_file_by_name(path);
+    if (!inode) return -1;  /* File not found */
     
-    return -1;  /* File not found */
+    inode->priority = priority;
+    return 0;
 }
 
 /*
@@ -279,15 +449,20 @@ void xaefs_find_by_tag(const char* tag)
 /*
  * xaefs_list_dir() - List files in a directory
  * 
- * WHAT: Show all files in the filesystem
- * WHY: So users can see what files exist
- * HOW: Print all inodes in the root directory
+ * WHAT: Show files in specified directory
+ * WHY: So users can see directory contents
+ * HOW: Print inodes that have matching parent_inode
  */
 int xaefs_list_dir(const char* path) 
 {
     uint32_t i, j;
+    uint32_t parent_num;
     const char* type_names[] = {"FILE", "DIR ", "DEV "};
     const char* priority_names[] = {"LOW ", "NORM", "HIGH", "CRIT"};
+    uint8_t found_any = 0;
+    
+    /* Find parent directory inode number */
+    parent_num = find_parent_dir(path);
     
     vga_print("\nFiles in ");
     vga_print(path);
@@ -295,8 +470,11 @@ int xaefs_list_dir(const char* path)
     vga_print("NAME                  TYPE  PRIORITY  SIZE    TAGS\n");
     vga_print("----------------------------------------------------\n");
     
+    /* Show files that have this directory as parent */
     for (i = 1; i < XAEFS_MAX_FILES; i++) {  /* Skip root at 0 */
-        if (inode_table[i].inode_num != 0) {
+        if (inode_table[i].inode_num != 0 && inode_table[i].parent_inode == parent_num) {
+            found_any = 1;
+            
             /* Print filename */
             vga_print(inode_table[i].name);
             
@@ -329,6 +507,10 @@ int xaefs_list_dir(const char* path)
             
             vga_putchar('\n');
         }
+    }
+    
+    if (!found_any) {
+        vga_print("(empty directory)\n");
     }
     
     return 0;
