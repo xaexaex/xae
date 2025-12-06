@@ -132,4 +132,12 @@ int xaefs_add_tag(const char* path, const char* tag);
 int xaefs_create_version(const char* path);
 void xaefs_find_by_tag(const char* tag);
 
+/* Disk persistence */
+void xaefs_sync(void);       /* Save filesystem to disk */
+void xaefs_load(void);       /* Load filesystem from disk */
+uint8_t xaefs_is_loaded(void); /* Check if filesystem was loaded */
+
+/* Debug */
+void xaefs_debug_list_all(void); /* List all inodes with parent info */
+
 #endif /* XAEFS_H */

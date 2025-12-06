@@ -33,6 +33,7 @@ KERNEL_C_OBJ = $(patsubst %.c, build/%.o, $(notdir $(KERNEL_C_SRC)))
 BOOTLOADER = build/boot.bin
 KERNEL = build/kernel.bin
 OS_IMAGE = build/xae_os.img
+DISK_IMAGE = build/xae_disk.img
 
 # Default target
 all: $(OS_IMAGE)
@@ -102,14 +103,22 @@ build/%.o: kernel/editor/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Run in QEMU emulator
-run: $(OS_IMAGE)
+run: $(OS_IMAGE) $(DISK_IMAGE)
 	@echo "Starting XAE OS in QEMU..."
-	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk
+	@echo "Boot disk: $(OS_IMAGE)"
+	@echo "Data disk: $(DISK_IMAGE)"
+	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk -drive file=$(DISK_IMAGE),format=raw,index=1,media=disk
+
+# Create persistent disk image
+$(DISK_IMAGE):
+	@echo "Creating persistent disk image (10MB)..."
+	@dd if=/dev/zero of=$(DISK_IMAGE) bs=1M count=10 2>/dev/null || (echo "Failed to create disk image" && exit 1)
+	@echo "Disk image created successfully"
 
 # Run with debugging
-debug: $(OS_IMAGE)
+debug: $(OS_IMAGE) $(DISK_IMAGE)
 	@echo "Starting XAE OS in QEMU (debug mode)..."
-	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk -s -S
+	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk -drive file=$(DISK_IMAGE),format=raw,index=1,media=disk -s -S
 
 # Clean build files
 clean:

@@ -27,10 +27,10 @@ void shell_init(void)
 {
     vga_print("\n");
     vga_print("========================================\n");
-    vga_print("XAE Shell v1.0 - Interactive Mode\n");
+    vga_print("XAE FileSystem Manager v1.0\n");
     vga_print("========================================\n");
-    vga_print("NOTE: Files exist in RAM only.\n");
-    vga_print("They will be lost when you power off!\n");
+    vga_print("A filesystem-optimized OS\n");
+    vga_print("Note: In-memory mode (use 'sync' to save)\n");
     vga_print("Type 'help' for available commands.\n");
     vga_print("\n");
 }
@@ -40,22 +40,22 @@ void shell_init(void)
  */
 static void cmd_help(void) 
 {
-    vga_print("\nAvailable Commands:\n");
+    vga_print("\nAvailable Commands (Part 1/2):\n");
     vga_print("  mk <name>         - Create file\n");
-    vga_print("  mk <name>/        - Create folder (add / at end)\n");
+    vga_print("  mk <name>/        - Create folder\n");
     vga_print("  cd <dir>          - Change directory\n");
     vga_print("  rm <name>         - Remove file\n");
-    vga_print("  ls                - List files in current directory\n");
-    vga_print("  edit <file>       - Open text editor\n");
-    vga_print("  fun <file>        - View file contents\n");
-    vga_print("  tag <file> <tag>  - Add tag to file\n");
-    vga_print("  find <tag>        - Find files by tag\n");
-    vga_print("  pri <file> <lvl>  - Set priority (low/mid/high/max)\n");
-    vga_print("  ver <file>        - Create new version\n");
-    vga_print("  back <file> <num> - Restore to version\n");
-    vga_print("  info <file>       - Show file details\n");
+    vga_print("  ls                - List files\n");
+    vga_print("  edit <file>       - Text editor\n");
+    vga_print("  fun <file>        - View file\n");
+    vga_print("  sync              - Save to disk\n");
+    vga_print("\nPart 2/2:\n");
+    vga_print("  tag <file> <tag>  - Add tag\n");
+    vga_print("  find <tag>        - Find by tag\n");
+    vga_print("  pri <file> <lvl>  - Set priority\n");
+    vga_print("                      (low/mid/high/max)\n");
     vga_print("  clear             - Clear screen\n");
-    vga_print("  help              - Show this help\n");
+    vga_print("  help              - This help\n");
     vga_print("\n");
 }
 
@@ -80,16 +80,42 @@ static void cmd_mk(char* name)
         name[len - 1] = '\0';  /* Remove the / */
     }
     
+    /* Build full path: current_path + name */
+    char full_path[PATH_BUFFER_SIZE];
+    int i = 0, j = 0;
+    
+    /* Copy current path */
+    while (current_path[i] != '\0' && i < PATH_BUFFER_SIZE - 1) {
+        full_path[j++] = current_path[i++];
+    }
+    
+    /* Add / if not at root and path doesn't end with / */
+    if (j > 0 && full_path[j-1] != '/') {
+        full_path[j++] = '/';
+    }
+    
+    /* Add filename */
+    i = 0;
+    while (name[i] != '\0' && j < PATH_BUFFER_SIZE - 1) {
+        full_path[j++] = name[i++];
+    }
+    full_path[j] = '\0';
+    
     uint8_t type = is_dir ? XAEFS_FILE_DIRECTORY : XAEFS_FILE_REGULAR;
-    int result = xaefs_create(name, type, XAEFS_PRIORITY_NORMAL);
+    int result = xaefs_create(full_path, type, XAEFS_PRIORITY_NORMAL);
     
     if (result >= 0) {
         /* Set parent directory */
-        xaefs_set_parent(name, current_path);
+        xaefs_set_parent(full_path, current_path);
+        
+        /* Manually sync to ensure parent is saved */
+        xaefs_sync();
         
         vga_print("Created ");
         vga_print(is_dir ? "folder: " : "file: ");
         vga_print(name);
+        vga_print(" in ");
+        vga_print(current_path);
         vga_print("\n");
     } else {
         if (result == -2) {
@@ -168,7 +194,10 @@ static void cmd_cd(char* dirname)
         while (current_path[i] != '\0') i++;
         i--;
         while (i > 0 && current_path[i] != '/') i--;
+        
         if (i == 0) {
+            /* Going back to root */
+            current_path[0] = '/';
             current_path[1] = '\0';
         } else {
             current_path[i] = '\0';
@@ -319,6 +348,24 @@ static void cmd_clear(void)
 }
 
 /*
+ * cmd_sync() - Save filesystem to disk
+ */
+static void cmd_sync(void) 
+{
+    vga_print("Manually syncing filesystem to disk...\n");
+    xaefs_sync();
+    vga_print("[OK] Filesystem synced successfully\n");
+}
+
+/*
+ * cmd_debug() - Show all inodes for debugging
+ */
+static void cmd_debug(void) 
+{
+    xaefs_debug_list_all();
+}
+
+/*
  * parse_and_execute() - Parse command and execute
  */
 static void parse_and_execute(char* cmd) 
@@ -368,6 +415,12 @@ static void parse_and_execute(char* cmd)
     }
     else if (strcmp(token, "fun") == 0) {
         cmd_fun(arg1);
+    }
+    else if (strcmp(token, "sync") == 0) {
+        cmd_sync();
+    }
+    else if (strcmp(token, "debug") == 0) {
+        cmd_debug();
     }
     else if (strcmp(token, "ver") == 0) {
         vga_print("Command 'ver' not yet implemented\n");

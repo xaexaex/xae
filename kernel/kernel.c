@@ -8,11 +8,12 @@
  */
 
 #include "include/vga.h"
-#include "include/string.h"
+#include "include/vga.h"
 #include "include/memory.h"
 #include "include/xaefs.h"
 #include "include/keyboard.h"
 #include "include/shell.h"
+#include "include/disk.h"
 
 /*
  * kernel_main() - The first C function that runs
@@ -44,16 +45,29 @@ void kernel_main(void)
     /* STEP 3: Show some system info */
     vga_print("\nSystem Information:\n");
     vga_print("  - Architecture: x86 (32-bit)\n");
-    vga_print("  - Available Memory: Detecting...\n");
-    vga_print("  - Filesystem: XAE-FS (custom)\n");
+    vga_print("  - Boot Mode: BIOS Legacy\n");
+    vga_print("  - Filesystem: XAE-FS (Production Mode)\n");
     
-    /* STEP 4: Initialize our custom filesystem
-     * WHY: We need a way to organize files on disk
-     * HOW: We'll create our own unique filesystem structure */
-    vga_print("\n[..] Initializing XAE Filesystem...\n");
-    xaefs_init();
-    xaefs_format("XAE System Disk");
-    vga_print("[OK] Filesystem ready\n");
+    /* STEP 4: Initialize disk driver */
+    vga_print("\n[..] Initializing storage subsystem...\n");
+    disk_init();
+    
+    /* STEP 5: Initialize filesystem - try to load from disk */
+    vga_print("\n[..] Mounting XAE Filesystem...\n");
+    
+    /* Try to load existing filesystem from disk */
+    xaefs_load();
+    
+    /* If no filesystem found on disk, create new one */
+    if (!xaefs_is_loaded()) {
+        vga_print("  - Creating new filesystem...\n");
+        xaefs_init();
+        xaefs_format("XAE_FS_DISK");
+        vga_print("  - Writing filesystem to disk...\n");
+        xaefs_sync();
+    }
+    
+    vga_print("[OK] Filesystem mounted\n");
     
     vga_print("\n");
     vga_print("Kernel initialized successfully!\n");
@@ -89,6 +103,7 @@ void kernel_main(void)
     vga_print("[OK] Keyboard ready\n");
     
     /* Start interactive shell */
+    
     shell_init();
     shell_run();
     

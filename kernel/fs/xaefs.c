@@ -8,6 +8,18 @@
 #include "include/memory.h"
 #include "include/string.h"
 #include "include/vga.h"
+#include "include/disk.h"
+
+/* Disk layout for XAE-FS:
+ * Sector 0: Bootloader (reserved)
+ * Sector 1: Superblock
+ * Sector 2-9: Inode table (256 inodes * ~100 bytes each = ~25KB = 8 sectors)
+ * Sector 10+: File data blocks
+ */
+#define XAEFS_SUPERBLOCK_SECTOR 1
+#define XAEFS_INODE_TABLE_SECTOR 2
+#define XAEFS_INODE_TABLE_SECTORS 8
+#define XAEFS_DATA_START_SECTOR 10
 
 /* In-memory filesystem structures */
 static struct xaefs_superblock superblock;
@@ -16,6 +28,7 @@ static struct xaefs_file file_table[16];  /* Max 16 open files */
 
 /* Filesystem state */
 static uint8_t fs_initialized = 0;
+static uint8_t auto_sync_enabled = 1;  /* Auto-save on every change for production */
 
 /*
  * xaefs_init() - Initialize the filesystem
@@ -257,13 +270,26 @@ int xaefs_create(const char* path, uint8_t type, uint8_t priority)
     inode->version = 1;
     inode->tag_count = 0;
     
-    /* Copy filename */
-    for (i = 0; i < XAEFS_MAX_FILENAME - 1 && path[i] != '\0'; i++) {
-        inode->name[i] = path[i];
+    /* Extract just the filename from path (e.g., "new.txt" from "sys/new.txt") */
+    const char* filename = path;
+    for (i = 0; path[i] != '\0'; i++) {
+        if (path[i] == '/') {
+            filename = &path[i + 1];  /* Point to char after last / */
+        }
+    }
+    
+    /* Copy filename only */
+    for (i = 0; i < XAEFS_MAX_FILENAME - 1 && filename[i] != '\0'; i++) {
+        inode->name[i] = filename[i];
     }
     inode->name[i] = '\0';
     
     superblock.free_inodes--;
+    
+    /* Auto-sync to disk */
+    if (auto_sync_enabled) {
+        xaefs_sync();
+    }
     
     return inode_num;
 }
@@ -277,7 +303,17 @@ int xaefs_create(const char* path, uint8_t type, uint8_t priority)
  */
 int xaefs_set_parent(const char* filename, const char* parent_path) 
 {
-    struct xaefs_inode* file = find_file_by_name(filename);
+    uint32_t i;
+    
+    /* Extract just the filename from full path */
+    const char* base_name = filename;
+    for (i = 0; filename[i] != '\0'; i++) {
+        if (filename[i] == '/') {
+            base_name = &filename[i + 1];
+        }
+    }
+    
+    struct xaefs_inode* file = find_file_by_name(base_name);
     if (!file) return -1;
     
     file->parent_inode = find_parent_dir(parent_path);
@@ -376,6 +412,11 @@ int xaefs_delete_in_dir(const char* name, const char* current_dir)
     /* Clear the inode */
     memset(inode, 0, sizeof(struct xaefs_inode));
     superblock.free_inodes++;
+    
+    /* Auto-sync to disk */
+    if (auto_sync_enabled) {
+        xaefs_sync();
+    }
     
     return 0;
 }
@@ -514,4 +555,189 @@ int xaefs_list_dir(const char* path)
     }
     
     return 0;
+}
+
+/*
+ * ==============================================================================
+ * DISK PERSISTENCE FUNCTIONS
+ * ==============================================================================
+ */
+
+/*
+ * xaefs_sync() - Save filesystem to disk
+ * 
+ * WHAT: Write all filesystem data to persistent storage
+ * WHY: So files survive power-off
+ * HOW: Write superblock and inode table to disk sectors
+ */
+void xaefs_sync(void) 
+{
+    uint8_t buffer[DISK_SECTOR_SIZE];
+    uint32_t i;
+    
+    /* Write superblock to sector 1 */
+    memset(buffer, 0, DISK_SECTOR_SIZE);
+    memcpy(buffer, &superblock, sizeof(superblock));
+    if (disk_write_sector(XAEFS_SUPERBLOCK_SECTOR, buffer) != 0) {
+        vga_print("[ERROR] Failed to write superblock to disk\n");
+        return;
+    }
+    
+    /* Write inode table (8 sectors) */
+    for (i = 0; i < XAEFS_INODE_TABLE_SECTORS; i++) {
+        uint32_t inodes_per_sector = DISK_SECTOR_SIZE / sizeof(struct xaefs_inode);
+        uint32_t inode_start = i * inodes_per_sector;
+        
+        memset(buffer, 0, DISK_SECTOR_SIZE);
+        
+        /* Copy inodes to buffer */
+        uint32_t j;
+        for (j = 0; j < inodes_per_sector && (inode_start + j) < XAEFS_MAX_FILES; j++) {
+            memcpy(buffer + (j * sizeof(struct xaefs_inode)), 
+                   &inode_table[inode_start + j], 
+                   sizeof(struct xaefs_inode));
+        }
+        
+        if (disk_write_sector(XAEFS_INODE_TABLE_SECTOR + i, buffer) != 0) {
+            vga_print("[ERROR] Failed to write inode table to disk\n");
+            return;
+        }
+    }
+    
+    /* Show sync status */
+    if (auto_sync_enabled) {
+        vga_print("  [Synced to disk]\n");
+    }
+}
+
+/*
+ * xaefs_load() - Load filesystem from disk
+ * 
+ * WHAT: Read filesystem data from persistent storage
+ * WHY: To restore files after boot
+ * HOW: Read superblock and inode table from disk sectors
+ */
+void xaefs_load(void) 
+{
+    uint8_t buffer[DISK_SECTOR_SIZE];
+    uint32_t i;
+    
+    vga_print("  - Attempting to load filesystem from disk...\n");
+    
+    /* Clear inode table before loading */
+    memset(inode_table, 0, sizeof(inode_table));
+    
+    /* Read superblock from sector 1 */
+    if (disk_read_sector(XAEFS_SUPERBLOCK_SECTOR, buffer) != 0) {
+        vga_print("  - Disk read failed, will create new filesystem\n");
+        return;
+    }
+    
+    /* Check magic number */
+    struct xaefs_superblock* sb = (struct xaefs_superblock*)buffer;
+    if (sb->magic != 0x58414546) {
+        vga_print("  - No valid XAE-FS found on disk\n");
+        return;
+    }
+    
+    /* Load superblock */
+    memcpy(&superblock, buffer, sizeof(superblock));
+    vga_print("  - Found existing XAE-FS! Loading...\n");
+    
+    /* Read inode table (8 sectors) */
+    for (i = 0; i < XAEFS_INODE_TABLE_SECTORS; i++) {
+        if (disk_read_sector(XAEFS_INODE_TABLE_SECTOR + i, buffer) != 0) {
+            vga_print("  - Error reading inode table, aborting load\n");
+            fs_initialized = 0;
+            return;
+        }
+        
+        /* Copy inodes from buffer */
+        uint32_t inodes_per_sector = DISK_SECTOR_SIZE / sizeof(struct xaefs_inode);
+        uint32_t inode_start = i * inodes_per_sector;
+        uint32_t j;
+        
+        for (j = 0; j < inodes_per_sector && (inode_start + j) < XAEFS_MAX_FILES; j++) {
+            memcpy(&inode_table[inode_start + j],
+                   buffer + (j * sizeof(struct xaefs_inode)),
+                   sizeof(struct xaefs_inode));
+        }
+    }
+    
+    vga_print("  - Filesystem restored from disk!\n");
+    vga_print("  - Loaded ");
+    char num_str[16];
+    uint32_t file_count = 0;
+    for (i = 0; i < XAEFS_MAX_FILES; i++) {
+        if (inode_table[i].inode_num != 0) file_count++;
+    }
+    /* Simple number printing */
+    if (file_count < 10) {
+        vga_putchar('0' + file_count);
+    } else {
+        vga_putchar('0' + (file_count / 10));
+        vga_putchar('0' + (file_count % 10));
+    }
+    vga_print(" files from disk\n");
+    
+    fs_initialized = 1;
+}
+
+/*
+ * xaefs_is_loaded() - Check if filesystem was successfully loaded
+ */
+uint8_t xaefs_is_loaded(void) 
+{
+    return fs_initialized;
+}
+
+/*
+ * xaefs_debug_list_all() - Show all inodes with parent info (DEBUG)
+ */
+void xaefs_debug_list_all(void)
+{
+    uint32_t i;
+    
+    vga_print("\n=== DEBUG: ALL INODES ===\n");
+    vga_print("ID  NAME            PARENT  TYPE\n");
+    vga_print("-----------------------------------\n");
+    
+    for (i = 0; i < XAEFS_MAX_FILES; i++) {
+        if (inode_table[i].inode_num != 0) {
+            /* Print inode number */
+            if (i < 10) {
+                vga_putchar('0' + i);
+            } else {
+                vga_putchar('0' + (i / 10));
+                vga_putchar('0' + (i % 10));
+            }
+            vga_print("  ");
+            
+            /* Print name */
+            vga_print(inode_table[i].name);
+            uint32_t j;
+            for (j = strlen(inode_table[i].name); j < 16; j++) {
+                vga_putchar(' ');
+            }
+            
+            /* Print parent */
+            uint32_t p = inode_table[i].parent_inode;
+            if (p < 10) {
+                vga_putchar('0' + p);
+            } else {
+                vga_putchar('0' + (p / 10));
+                vga_putchar('0' + (p % 10));
+            }
+            vga_print("      ");
+            
+            /* Print type */
+            if (inode_table[i].type == XAEFS_FILE_DIRECTORY) {
+                vga_print("DIR");
+            } else {
+                vga_print("FILE");
+            }
+            vga_print("\n");
+        }
+    }
+    vga_print("\n");
 }
