@@ -8,12 +8,15 @@
  */
 
 #include "include/vga.h"
-#include "include/vga.h"
 #include "include/memory.h"
 #include "include/xaefs.h"
 #include "include/keyboard.h"
 #include "include/shell.h"
 #include "include/disk.h"
+#include "include/serial.h"
+#include "include/rtl8139.h"
+#include "include/net.h"
+#include "include/auth.h"
 
 /*
  * kernel_main() - The first C function that runs
@@ -24,87 +27,51 @@
  */
 void kernel_main(void) 
 {
-    /* STEP 1: Initialize the display
-     * WHY: So we can show messages to the user */
+    /* Initialize display and serial */
     vga_init();
-    
-    /* Clear screen and show welcome message */
     vga_clear();
-    vga_print("XAE Operating System v0.1\n");
-    vga_print("========================\n\n");
+    vga_print("KERNEL STARTED!\n");
     
-    vga_print("[OK] VGA Display initialized\n");
+    serial_init();
     
-    /* STEP 2: Initialize memory management
-     * WHY: We need to track which parts of RAM are free/used
-     * HOW: We'll create a bitmap to track 4KB pages of memory */
-    vga_print("[..] Initializing memory manager...\n");
+    /* Welcome messages */
+    vga_clear();
+    vga_print("XAE OS v0.2 - Network Edition\n");
+    vga_print("==============================\n");
+    
+    /* Initialize subsystems */
     memory_init();
-    vga_print("[OK] Memory manager initialized\n");
+    vga_print("Memory initialized\n");
     
-    /* STEP 3: Show some system info */
-    vga_print("\nSystem Information:\n");
-    vga_print("  - Architecture: x86 (32-bit)\n");
-    vga_print("  - Boot Mode: BIOS Legacy\n");
-    vga_print("  - Filesystem: XAE-FS (Production Mode)\n");
-    
-    /* STEP 4: Initialize disk driver */
-    vga_print("\n[..] Initializing storage subsystem...\n");
     disk_init();
+    vga_print("Disk initialized\n");
     
-    /* STEP 5: Initialize filesystem - try to load from disk */
-    vga_print("\n[..] Mounting XAE Filesystem...\n");
+    /* Initialize networking */
+    vga_print("\n--- Network Initialization ---\n");
+    rtl8139_init();
+    net_init();
+    auth_init();
+    vga_print("--- Network Ready ---\n\n");
     
-    /* Try to load existing filesystem from disk */
+    vga_print("Listening for connections on port 23\n");
+    vga_print("Default users: admin/admin123, user/password\n\n");
+    
+    /* Load or create filesystem */
     xaefs_load();
-    
-    /* If no filesystem found on disk, create new one */
     if (!xaefs_is_loaded()) {
-        vga_print("  - Creating new filesystem...\n");
         xaefs_init();
         xaefs_format("XAE_FS_DISK");
-        vga_print("  - Writing filesystem to disk...\n");
         xaefs_sync();
     }
     
-    vga_print("[OK] Filesystem mounted\n");
-    
-    vga_print("\n");
-    vga_print("Kernel initialized successfully!\n");
-    vga_print("\n=== FILESYSTEM DEMONSTRATION ===\n");
-    
-    /* Create some demo files to show off our filesystem! */
-    vga_print("\nCreating demo files...\n");
-    
-    xaefs_create("readme.txt", XAEFS_FILE_REGULAR, XAEFS_PRIORITY_NORMAL);
-    xaefs_add_tag("readme.txt", "docs");
-    
-    xaefs_create("kernel.c", XAEFS_FILE_REGULAR, XAEFS_PRIORITY_HIGH);
-    xaefs_add_tag("kernel.c", "source");
-    xaefs_add_tag("kernel.c", "critical");
-    
-    xaefs_mkdir("bin", XAEFS_PRIORITY_HIGH);
-    xaefs_add_tag("bin", "executables");
-    
-    xaefs_create("config.sys", XAEFS_FILE_REGULAR, XAEFS_PRIORITY_CRITICAL);
-    xaefs_add_tag("config.sys", "system");
-    
-    /* List all files */
-    xaefs_list_dir("/");
-    
-    vga_print("\n=== UNIQUE FEATURES DEMO ===\n");
-    vga_print("1. File Priorities: Each file has a priority level\n");
-    vga_print("2. Tagging System: Files can have multiple tags\n");
-    vga_print("3. Version Control: Built-in versioning support\n");
+    serial_print("[OK] Ready\r\n");
+    serial_print("Type 'help' for commands\r\n\r\n");
     
     /* Initialize keyboard and shell */
-    vga_print("\n[..] Initializing keyboard...\n");
     keyboard_init();
-    vga_print("[OK] Keyboard ready\n");
-    
-    /* Start interactive shell */
-    
     shell_init();
+    
+    /* Run the shell - it will handle both keyboard and network */
     shell_run();
     
     /* Should never reach here */

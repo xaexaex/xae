@@ -15,6 +15,9 @@
 /* Initialize keyboard driver */
 void keyboard_init(void);
 
+/* Check if keyboard has input available (non-blocking) */
+uint8_t keyboard_has_input(void);
+
 /* Get a character from keyboard (blocking) */
 char keyboard_getchar(void);
 

@@ -10,6 +10,9 @@
 [ORG 0x7C00]        ; BIOS loads us at memory address 0x7C00
 
 start:
+    ; Save boot drive number (BIOS passes it in DL)
+    mov [boot_drive], dl
+    
     ; STEP 1: Set up segment registers
     ; WHY: In 16-bit mode, memory is accessed using segment:offset pairs
     cli                 ; Disable interrupts while we set up
@@ -31,11 +34,11 @@ start:
     xor bx, bx          ; ES:BX = 0x1000:0x0000 (physical address 0x10000)
 
     mov ah, 0x02        ; BIOS function: Read Sectors
-    mov al, 30          ; Read 30 sectors (about 15KB for our kernel with shell)
+    mov al, 60          ; Read 60 sectors (about 30KB for kernel with network stack)
     mov ch, 0           ; Cylinder 0
     mov cl, 2           ; Start at sector 2 (sector 1 is this bootloader)
     mov dh, 0           ; Head 0
-    mov dl, 0x80        ; Drive 0x80 = first hard drive
+    mov dl, [boot_drive] ; Use the drive we booted from
     int 0x13            ; Call BIOS disk interrupt
     
     jc disk_error       ; If carry flag set, there was an error
@@ -127,6 +130,9 @@ gdt_end:
 gdt_descriptor:
     dw gdt_end - gdt_start - 1
     dd gdt_start
+
+; Boot drive number (saved from BIOS)
+boot_drive: db 0
 
 ; ==============================================================================
 ; BOOT SIGNATURE

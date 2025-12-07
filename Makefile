@@ -23,7 +23,7 @@ ASMFLAGS = -f elf32
 # Source files
 BOOT_SRC = boot/boot.asm
 KERNEL_ENTRY = kernel/entry.asm
-KERNEL_C_SRC = $(wildcard kernel/*.c kernel/drivers/*.c kernel/mm/*.c kernel/fs/*.c kernel/lib/*.c kernel/shell/*.c kernel/editor/*.c)
+KERNEL_C_SRC = $(wildcard kernel/*.c kernel/drivers/*.c kernel/mm/*.c kernel/fs/*.c kernel/lib/*.c kernel/shell/*.c kernel/editor/*.c kernel/net/*.c kernel/auth/*.c)
 
 # Object files
 KERNEL_ENTRY_OBJ = build/entry.o
@@ -102,12 +102,61 @@ build/%.o: kernel/editor/%.c
 	@echo "Compiling $<..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Run in QEMU emulator
+build/%.o: kernel/net/%.c
+	@mkdir -p build
+	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/%.o: kernel/auth/%.c
+	@mkdir -p build
+	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Run in QEMU emulator (local VGA mode)
 run: $(OS_IMAGE) $(DISK_IMAGE)
-	@echo "Starting XAE OS in QEMU..."
-	@echo "Boot disk: $(OS_IMAGE)"
-	@echo "Data disk: $(DISK_IMAGE)"
-	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk -drive file=$(DISK_IMAGE),format=raw,index=1,media=disk
+	@echo "Starting XAE OS in QEMU (local mode)..."
+	qemu-system-i386 \
+		-drive file=$(OS_IMAGE),format=raw,if=floppy \
+		-drive file=$(DISK_IMAGE),format=raw,if=ide,index=1 \
+		-boot a
+
+# Run with network support (RTL8139 NIC)
+runnet: $(OS_IMAGE) $(DISK_IMAGE)
+	@echo "=========================================="
+	@echo "XAE OS - Network Edition"
+	@echo "=========================================="
+	@echo "Network: 10.0.0.2 (XAE OS)"
+	@echo "         10.0.0.1 (Gateway)"
+	@echo ""
+	@echo "Connect using Python client:"
+	@echo "  python3 xae_client.py 127.0.0.1 2323 admin admin123"
+	@echo ""
+	@echo "Default users:"
+	@echo "  admin / admin123"
+	@echo "  user  / password"
+	@echo "=========================================="
+	qemu-system-i386 \
+		-drive file=$(OS_IMAGE),format=raw,if=floppy \
+		-drive file=$(DISK_IMAGE),format=raw,if=ide,index=1 \
+		-boot a \
+		-netdev user,id=net0,hostfwd=tcp::2323-10.0.0.2:23 \
+		-device rtl8139,netdev=net0 \
+		-serial stdio \
+		-no-reboot \
+		-no-shutdown
+
+# Run with serial port for remote access
+runserial: $(OS_IMAGE) $(DISK_IMAGE)
+	@echo "=========================================="
+	@echo "XAE OS - Remote Access Mode"
+	@echo "=========================================="
+	@echo "Serial port redirected to TCP port 4444"
+	@echo ""
+	@echo "Connect from another terminal:"
+	@echo "  telnet localhost 4444"
+	@echo "  OR: nc localhost 4444"
+	@echo "=========================================="
+	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk -drive file=$(DISK_IMAGE),format=raw,index=1,media=disk -serial tcp::4444,server,nowait -nographic
 
 # Create persistent disk image
 $(DISK_IMAGE):

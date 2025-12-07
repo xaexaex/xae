@@ -10,6 +10,7 @@
 #include "include/string.h"
 #include "include/xaefs.h"
 #include "include/editor.h"
+#include "include/serial.h"
 
 #define CMD_BUFFER_SIZE 256
 #define PATH_BUFFER_SIZE 128
@@ -20,19 +21,26 @@ static char cmd_buffer[CMD_BUFFER_SIZE];
 /* Current directory path */
 static char current_path[PATH_BUFFER_SIZE] = "/";
 
+/* Dual output helper */
+static void shell_print(const char* str) {
+    vga_print(str);
+    serial_print(str);
+}
+
+/* Network output helper */
+static void shell_net_print(void* session, const char* str) {
+    extern void net_send_tcp(void* session, const char* data, uint16_t length);
+    if (session) {
+        net_send_tcp(session, str, (uint16_t)strlen(str));
+    }
+}
+
 /*
  * shell_init() - Initialize the shell
  */
 void shell_init(void) 
 {
-    vga_print("\n");
-    vga_print("========================================\n");
-    vga_print("XAE FileSystem Manager v1.0\n");
-    vga_print("========================================\n");
-    vga_print("A filesystem-optimized OS\n");
-    vga_print("Note: In-memory mode (use 'sync' to save)\n");
-    vga_print("Type 'help' for available commands.\n");
-    vga_print("\n");
+    shell_print("\n");
 }
 
 /*
@@ -40,23 +48,23 @@ void shell_init(void)
  */
 static void cmd_help(void) 
 {
-    vga_print("\nAvailable Commands (Part 1/2):\n");
-    vga_print("  mk <name>         - Create file\n");
-    vga_print("  mk <name>/        - Create folder\n");
-    vga_print("  cd <dir>          - Change directory\n");
-    vga_print("  rm <name>         - Remove file\n");
-    vga_print("  ls                - List files\n");
-    vga_print("  edit <file>       - Text editor\n");
-    vga_print("  fun <file>        - View file\n");
-    vga_print("  sync              - Save to disk\n");
-    vga_print("\nPart 2/2:\n");
-    vga_print("  tag <file> <tag>  - Add tag\n");
-    vga_print("  find <tag>        - Find by tag\n");
-    vga_print("  pri <file> <lvl>  - Set priority\n");
-    vga_print("                      (low/mid/high/max)\n");
-    vga_print("  clear             - Clear screen\n");
-    vga_print("  help              - This help\n");
-    vga_print("\n");
+    shell_print("\nAvailable Commands (Part 1/2):\n");
+    shell_print("  mk <name>         - Create file\n");
+    shell_print("  mk <name>/        - Create folder\n");
+    shell_print("  cd <dir>          - Change directory\n");
+    shell_print("  rm <name>         - Remove file\n");
+    shell_print("  ls                - List files\n");
+    shell_print("  edit <file>       - Text editor\n");
+    shell_print("  fun <file>        - View file\n");
+    shell_print("  sync              - Save to disk\n");
+    shell_print("\nPart 2/2:\n");
+    shell_print("  tag <file> <tag>  - Add tag\n");
+    shell_print("  find <tag>        - Find by tag\n");
+    shell_print("  pri <file> <lvl>  - Set priority\n");
+    shell_print("                      (low/mid/high/max)\n");
+    shell_print("  clear             - Clear screen\n");
+    shell_print("  help              - This help\n");
+    shell_print("\n");
 }
 
 /*
@@ -65,8 +73,8 @@ static void cmd_help(void)
 static void cmd_mk(char* name) 
 {
     if (!name) {
-        vga_print("Usage: mk <name>     (creates file)\n");
-        vga_print("   or: mk <name>/    (creates folder - add / at end)\n");
+        shell_print("Usage: mk <name>     (creates file)\n");
+        shell_print("   or: mk <name>/    (creates folder - add / at end)\n");
         return;
     }
     
@@ -111,22 +119,22 @@ static void cmd_mk(char* name)
         /* Manually sync to ensure parent is saved */
         xaefs_sync();
         
-        vga_print("Created ");
-        vga_print(is_dir ? "folder: " : "file: ");
-        vga_print(name);
-        vga_print(" in ");
-        vga_print(current_path);
-        vga_print("\n");
+        shell_print("Created ");
+        shell_print(is_dir ? "folder: " : "file: ");
+        shell_print(name);
+        shell_print(" in ");
+        shell_print(current_path);
+        shell_print("\n");
     } else {
         if (result == -2) {
-            vga_print("Error: File system is full\n");
+            shell_print("Error: File system is full\n");
         } else if (result == -3) {
-            vga_print("Error: File already exists: ");
-            vga_print(name);
-            vga_print("\n");
+            shell_print("Error: File already exists: ");
+            shell_print(name);
+            shell_print("\n");
         } else {
-            vga_print("Error: Could not create ");
-            vga_print(is_dir ? "folder\n" : "file\n");
+            shell_print("Error: Could not create ");
+            shell_print(is_dir ? "folder\n" : "file\n");
         }
     }
 }
@@ -145,20 +153,20 @@ static void cmd_ls(void)
 static void cmd_rm(char* name) 
 {
     if (!name) {
-        vga_print("Usage: rm <name>\n");
+        shell_print("Usage: rm <name>\n");
         return;
     }
     
     int result = xaefs_delete_in_dir(name, current_path);
     
     if (result == 0) {
-        vga_print("Deleted: ");
-        vga_print(name);
-        vga_print("\n");
+        shell_print("Deleted: ");
+        shell_print(name);
+        shell_print("\n");
     } else {
-        vga_print("Error: File not found or cannot be deleted: ");
-        vga_print(name);
-        vga_print("\n");
+        shell_print("Error: File not found or cannot be deleted: ");
+        shell_print(name);
+        shell_print("\n");
     }
 }
 
@@ -168,9 +176,9 @@ static void cmd_rm(char* name)
 static void cmd_cd(char* dirname) 
 {
     if (!dirname) {
-        vga_print("Usage: cd <directory>\n");
-        vga_print("   or: cd ..  (go up one level)\n");
-        vga_print("   or: cd /   (go to root)\n");
+        shell_print("Usage: cd <directory>\n");
+        shell_print("   or: cd ..  (go up one level)\n");
+        shell_print("   or: cd /   (go to root)\n");
         return;
     }
     
@@ -178,14 +186,14 @@ static void cmd_cd(char* dirname)
     if (strcmp(dirname, "/") == 0) {
         current_path[0] = '/';
         current_path[1] = '\0';
-        vga_print("Changed to: /\n");
+        shell_print("Changed to: /\n");
         return;
     }
     
     if (strcmp(dirname, "..") == 0) {
         /* Go up one level */
         if (strcmp(current_path, "/") == 0) {
-            vga_print("Already at root directory\n");
+            shell_print("Already at root directory\n");
             return;
         }
         
@@ -202,9 +210,9 @@ static void cmd_cd(char* dirname)
         } else {
             current_path[i] = '\0';
         }
-        vga_print("Changed to: ");
-        vga_print(current_path);
-        vga_print("\n");
+        shell_print("Changed to: ");
+        shell_print(current_path);
+        shell_print("\n");
         return;
     }
     
@@ -238,9 +246,9 @@ static void cmd_cd(char* dirname)
     }
     current_path[i] = '\0';
     
-    vga_print("Changed to: ");
-    vga_print(current_path);
-    vga_print("\n");
+    shell_print("Changed to: ");
+    shell_print(current_path);
+    shell_print("\n");
 }
 
 /*
@@ -249,19 +257,19 @@ static void cmd_cd(char* dirname)
 static void cmd_tag(char* file, char* tag) 
 {
     if (!file || !tag) {
-        vga_print("Usage: tag <file> <tag>\n");
+        shell_print("Usage: tag <file> <tag>\n");
         return;
     }
     
     int result = xaefs_add_tag(file, tag);
     if (result == 0) {
-        vga_print("Tagged '");
-        vga_print(file);
-        vga_print("' with '");
-        vga_print(tag);
-        vga_print("'\n");
+        shell_print("Tagged '");
+        shell_print(file);
+        shell_print("' with '");
+        shell_print(tag);
+        shell_print("'\n");
     } else {
-        vga_print("Error: Could not add tag\n");
+        shell_print("Error: Could not add tag\n");
     }
 }
 
@@ -271,7 +279,7 @@ static void cmd_tag(char* file, char* tag)
 static void cmd_edit(char* filename) 
 {
     if (!filename) {
-        vga_print("Usage: edit <filename>\n");
+        shell_print("Usage: edit <filename>\n");
         return;
     }
     
@@ -284,7 +292,7 @@ static void cmd_edit(char* filename)
 static void cmd_fun(char* filename) 
 {
     if (!filename) {
-        vga_print("Usage: fun <filename>\n");
+        shell_print("Usage: fun <filename>\n");
         return;
     }
     
@@ -297,7 +305,7 @@ static void cmd_fun(char* filename)
 static void cmd_find(char* tag) 
 {
     if (!tag) {
-        vga_print("Usage: find <tag>\n");
+        shell_print("Usage: find <tag>\n");
         return;
     }
     
@@ -310,8 +318,8 @@ static void cmd_find(char* tag)
 static void cmd_pri(char* file, char* level) 
 {
     if (!file || !level) {
-        vga_print("Usage: pri <file> <level>\n");
-        vga_print("Levels: low, mid, high, max\n");
+        shell_print("Usage: pri <file> <level>\n");
+        shell_print("Levels: low, mid, high, max\n");
         return;
     }
     
@@ -325,17 +333,17 @@ static void cmd_pri(char* file, char* level)
     } else if (strcmp(level, "max") == 0) {
         priority = XAEFS_PRIORITY_CRITICAL;
     } else {
-        vga_print("Invalid level. Use: low, mid, high, max\n");
+        shell_print("Invalid level. Use: low, mid, high, max\n");
         return;
     }
     
     int result = xaefs_set_priority(file, priority);
     if (result == 0) {
-        vga_print("Priority set to ");
-        vga_print(level);
-        vga_print("\n");
+        shell_print("Priority set to ");
+        shell_print(level);
+        shell_print("\n");
     } else {
-        vga_print("Error: File not found\n");
+        shell_print("Error: File not found\n");
     }
 }
 
@@ -352,9 +360,9 @@ static void cmd_clear(void)
  */
 static void cmd_sync(void) 
 {
-    vga_print("Manually syncing filesystem to disk...\n");
+    shell_print("Manually syncing filesystem to disk...\n");
     xaefs_sync();
-    vga_print("[OK] Filesystem synced successfully\n");
+    shell_print("[OK] Filesystem synced successfully\n");
 }
 
 /*
@@ -423,37 +431,50 @@ static void parse_and_execute(char* cmd)
         cmd_debug();
     }
     else if (strcmp(token, "ver") == 0) {
-        vga_print("Command 'ver' not yet implemented\n");
+        shell_print("Command 'ver' not yet implemented\n");
     }
     else if (strcmp(token, "back") == 0) {
-        vga_print("Command 'back' not yet implemented\n");
+        shell_print("Command 'back' not yet implemented\n");
     }
     else if (strcmp(token, "info") == 0) {
-        vga_print("Command 'info' not yet implemented\n");
+        shell_print("Command 'info' not yet implemented\n");
     }
     else {
-        vga_print("Unknown command: ");
-        vga_print(token);
-        vga_print("\nType 'help' for available commands\n");
+        shell_print("Unknown command: ");
+        shell_print(token);
+        shell_print("\nType 'help' for available commands\n");
     }
 }
 
 /*
  * shell_run() - Main shell loop
- * 
- * WHAT: Interactive command loop
- * WHY: To continuously accept and execute commands
- * HOW: Show prompt, read input, parse, execute, repeat
  */
 void shell_run(void) 
 {
     while (1) {
-        /* Show prompt with current path */
-        vga_print(current_path);
-        vga_print(" > ");
+        /* Show prompt */
+        shell_print(current_path);
+        shell_print(" > ");
         
-        /* Read command */
-        keyboard_readline(cmd_buffer, CMD_BUFFER_SIZE);
+        /* Wait for input - poll network while waiting */
+        extern void rtl8139_handle_interrupt(void);
+        
+        while (1) {
+            /* Check for network packets */
+            rtl8139_handle_interrupt();
+            
+            /* Check for input */
+            if (serial_can_read()) {
+                serial_readline(cmd_buffer, CMD_BUFFER_SIZE);
+                break;
+            } else if (keyboard_has_input()) {
+                keyboard_readline(cmd_buffer, CMD_BUFFER_SIZE);
+                break;
+            }
+            
+            /* Small delay to prevent CPU spinning */
+            for (volatile int i = 0; i < 1000; i++);
+        }
         
         /* Parse and execute */
         if (cmd_buffer[0] != '\0') {
@@ -461,3 +482,48 @@ void shell_run(void)
         }
     }
 }
+
+/*
+ * shell_execute_command() - Execute command from network session
+ */
+void shell_execute_command(const char* cmd, void* session) {
+    char buffer[CMD_BUFFER_SIZE];
+    
+    /* Copy command to buffer */
+    uint16_t i = 0;
+    while (cmd[i] != '\0' && cmd[i] != '\n' && cmd[i] != '\r' && i < CMD_BUFFER_SIZE - 1) {
+        buffer[i] = cmd[i];
+        i++;
+    }
+    buffer[i] = '\0';
+    
+    /* Temporarily redirect output to network session */
+    /* For now, just acknowledge the command */
+    shell_net_print(session, "\nExecuting: ");
+    shell_net_print(session, buffer);
+    shell_net_print(session, "\n");
+    
+    /* Parse command (reuse existing logic) */
+    char* token = buffer;
+    while (*token == ' ') token++;
+    
+    if (*token == '\0') {
+        shell_net_print(session, "> ");
+        return;
+    }
+    
+    /* Execute based on command */
+    if (strncmp(token, "ls", 2) == 0) {
+        /* List files and send to network */
+        shell_net_print(session, "Files in current directory:\n");
+        /* TODO: Implement ls output to network */
+    } else if (strncmp(token, "help", 4) == 0) {
+        shell_net_print(session, "XAE Shell Commands:\n");
+        shell_net_print(session, "  ls, cd, mk, rm, edit, fun, sync, help\n");
+    } else {
+        shell_net_print(session, "Command not yet supported via network\n");
+    }
+    
+    shell_net_print(session, "> ");
+}
+

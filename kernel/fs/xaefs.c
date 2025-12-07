@@ -6,9 +6,21 @@
 
 #include "include/xaefs.h"
 #include "include/memory.h"
-#include "include/string.h"
 #include "include/vga.h"
+#include "include/serial.h"
+#include "include/string.h"
 #include "include/disk.h"
+
+/* Dual output helper */
+static void fs_print(const char* str) {
+    vga_print(str);
+    serial_print(str);
+}
+
+static void fs_putchar(char c) {
+    vga_putchar(c);
+    serial_putchar(c);
+}
 
 /* Disk layout for XAE-FS:
  * Sector 0: Bootloader (reserved)
@@ -66,12 +78,12 @@ void xaefs_init(void)
     
     fs_initialized = 1;
     
-    vga_print("  - Filesystem magic: 0x58414546\n");
-    vga_print("  - Block size: 4096 bytes\n");
-    vga_print("  - Total capacity: 4 MB\n");
+    fs_print("  - Filesystem magic: 0x58414546\n");
+    fs_print("  - Block size: 4096 bytes\n");
+    fs_print("  - Total capacity: 4 MB\n");
     
     /* Create unique starter hierarchy */
-    vga_print("  - Creating XAE hierarchy: /sys /usr /tmp\n");
+    fs_print("  - Creating XAE hierarchy: /sys /usr /tmp\n");
     
     /* Create /sys (system files) */
     int idx = xaefs_create("sys", XAEFS_FILE_DIRECTORY, XAEFS_PRIORITY_HIGH);
@@ -103,9 +115,9 @@ void xaefs_format(const char* label)
     }
     superblock.label[i] = '\0';
     
-    vga_print("  - Volume label: ");
-    vga_print(superblock.label);
-    vga_print("\n");
+    fs_print("  - Volume label: ");
+    fs_print(superblock.label);
+    fs_print("\n");
 }
 
 /*
@@ -452,9 +464,9 @@ void xaefs_find_by_tag(const char* tag)
     uint32_t i, j, k;
     uint8_t found = 0;
     
-    vga_print("\nFiles tagged with '");
-    vga_print(tag);
-    vga_print("':\n");
+    fs_print("\nFiles tagged with '");
+    fs_print(tag);
+    fs_print("':\n");
     
     /* Loop through all inodes */
     for (i = 1; i < XAEFS_MAX_FILES; i++) {  /* Skip root at 0 */
@@ -472,9 +484,9 @@ void xaefs_find_by_tag(const char* tag)
                 
                 if (match && inode_table[i].tags[j][k] == '\0') {
                     /* Found a match! */
-                    vga_print("  - ");
-                    vga_print(inode_table[i].name);
-                    vga_print("\n");
+                    fs_print("  - ");
+                    fs_print(inode_table[i].name);
+                    fs_print("\n");
                     found = 1;
                     break;
                 }
@@ -483,7 +495,7 @@ void xaefs_find_by_tag(const char* tag)
     }
     
     if (!found) {
-        vga_print("  (no files found)\n");
+        fs_print("  (no files found)\n");
     }
 }
 
@@ -505,11 +517,11 @@ int xaefs_list_dir(const char* path)
     /* Find parent directory inode number */
     parent_num = find_parent_dir(path);
     
-    vga_print("\nFiles in ");
-    vga_print(path);
-    vga_print(":\n");
-    vga_print("NAME                  TYPE  PRIORITY  SIZE    TAGS\n");
-    vga_print("----------------------------------------------------\n");
+    fs_print("\nFiles in ");
+    fs_print(path);
+    fs_print(":\n");
+    fs_print("NAME                  TYPE  PRIORITY  SIZE    TAGS\n");
+    fs_print("----------------------------------------------------\n");
     
     /* Show files that have this directory as parent */
     for (i = 1; i < XAEFS_MAX_FILES; i++) {  /* Skip root at 0 */
@@ -517,41 +529,41 @@ int xaefs_list_dir(const char* path)
             found_any = 1;
             
             /* Print filename */
-            vga_print(inode_table[i].name);
+            fs_print(inode_table[i].name);
             
             /* Pad to 22 chars */
             for (j = strlen(inode_table[i].name); j < 22; j++) {
-                vga_putchar(' ');
+                fs_putchar(' ');
             }
             
             /* Print type */
-            vga_print(type_names[inode_table[i].type]);
-            vga_print("  ");
+            fs_print(type_names[inode_table[i].type]);
+            fs_print("  ");
             
             /* Print priority */
-            vga_print(priority_names[inode_table[i].priority]);
-            vga_print("      ");
+            fs_print(priority_names[inode_table[i].priority]);
+            fs_print("      ");
             
             /* Print size (simplified) */
-            vga_print("0 KB");
-            vga_print("    ");
+            fs_print("0 KB");
+            fs_print("    ");
             
             /* Print tags */
             if (inode_table[i].tag_count > 0) {
-                vga_putchar('[');
+                fs_putchar('[');
                 for (j = 0; j < inode_table[i].tag_count; j++) {
-                    if (j > 0) vga_print(", ");
-                    vga_print(inode_table[i].tags[j]);
+                    if (j > 0) fs_print(", ");
+                    fs_print(inode_table[i].tags[j]);
                 }
-                vga_putchar(']');
+                fs_putchar(']');
             }
             
-            vga_putchar('\n');
+            fs_putchar('\n');
         }
     }
     
     if (!found_any) {
-        vga_print("(empty directory)\n");
+        fs_print("(empty directory)\n");
     }
     
     return 0;
@@ -579,7 +591,7 @@ void xaefs_sync(void)
     memset(buffer, 0, DISK_SECTOR_SIZE);
     memcpy(buffer, &superblock, sizeof(superblock));
     if (disk_write_sector(XAEFS_SUPERBLOCK_SECTOR, buffer) != 0) {
-        vga_print("[ERROR] Failed to write superblock to disk\n");
+        fs_print("[ERROR] Failed to write superblock to disk\n");
         return;
     }
     
@@ -599,14 +611,14 @@ void xaefs_sync(void)
         }
         
         if (disk_write_sector(XAEFS_INODE_TABLE_SECTOR + i, buffer) != 0) {
-            vga_print("[ERROR] Failed to write inode table to disk\n");
+            fs_print("[ERROR] Failed to write inode table to disk\n");
             return;
         }
     }
     
     /* Show sync status */
     if (auto_sync_enabled) {
-        vga_print("  [Synced to disk]\n");
+        fs_print("  [Synced to disk]\n");
     }
 }
 
@@ -622,32 +634,32 @@ void xaefs_load(void)
     uint8_t buffer[DISK_SECTOR_SIZE];
     uint32_t i;
     
-    vga_print("  - Attempting to load filesystem from disk...\n");
+    fs_print("  - Attempting to load filesystem from disk...\n");
     
     /* Clear inode table before loading */
     memset(inode_table, 0, sizeof(inode_table));
     
     /* Read superblock from sector 1 */
     if (disk_read_sector(XAEFS_SUPERBLOCK_SECTOR, buffer) != 0) {
-        vga_print("  - Disk read failed, will create new filesystem\n");
+        fs_print("  - Disk read failed, will create new filesystem\n");
         return;
     }
     
     /* Check magic number */
     struct xaefs_superblock* sb = (struct xaefs_superblock*)buffer;
     if (sb->magic != 0x58414546) {
-        vga_print("  - No valid XAE-FS found on disk\n");
+        fs_print("  - No valid XAE-FS found on disk\n");
         return;
     }
     
     /* Load superblock */
     memcpy(&superblock, buffer, sizeof(superblock));
-    vga_print("  - Found existing XAE-FS! Loading...\n");
+    fs_print("  - Found existing XAE-FS! Loading...\n");
     
     /* Read inode table (8 sectors) */
     for (i = 0; i < XAEFS_INODE_TABLE_SECTORS; i++) {
         if (disk_read_sector(XAEFS_INODE_TABLE_SECTOR + i, buffer) != 0) {
-            vga_print("  - Error reading inode table, aborting load\n");
+            fs_print("  - Error reading inode table, aborting load\n");
             fs_initialized = 0;
             return;
         }
@@ -664,21 +676,20 @@ void xaefs_load(void)
         }
     }
     
-    vga_print("  - Filesystem restored from disk!\n");
-    vga_print("  - Loaded ");
-    char num_str[16];
+    fs_print("  - Filesystem restored from disk!\n");
+    fs_print("  - Loaded ");
     uint32_t file_count = 0;
     for (i = 0; i < XAEFS_MAX_FILES; i++) {
         if (inode_table[i].inode_num != 0) file_count++;
     }
     /* Simple number printing */
     if (file_count < 10) {
-        vga_putchar('0' + file_count);
+        fs_putchar('0' + file_count);
     } else {
-        vga_putchar('0' + (file_count / 10));
-        vga_putchar('0' + (file_count % 10));
+        fs_putchar('0' + (file_count / 10));
+        fs_putchar('0' + (file_count % 10));
     }
-    vga_print(" files from disk\n");
+    fs_print(" files from disk\n");
     
     fs_initialized = 1;
 }
@@ -698,46 +709,46 @@ void xaefs_debug_list_all(void)
 {
     uint32_t i;
     
-    vga_print("\n=== DEBUG: ALL INODES ===\n");
-    vga_print("ID  NAME            PARENT  TYPE\n");
-    vga_print("-----------------------------------\n");
+    fs_print("\n=== DEBUG: ALL INODES ===\n");
+    fs_print("ID  NAME            PARENT  TYPE\n");
+    fs_print("-----------------------------------\n");
     
     for (i = 0; i < XAEFS_MAX_FILES; i++) {
         if (inode_table[i].inode_num != 0) {
             /* Print inode number */
             if (i < 10) {
-                vga_putchar('0' + i);
+                fs_putchar('0' + i);
             } else {
-                vga_putchar('0' + (i / 10));
-                vga_putchar('0' + (i % 10));
+                fs_putchar('0' + (i / 10));
+                fs_putchar('0' + (i % 10));
             }
-            vga_print("  ");
+            fs_print("  ");
             
             /* Print name */
-            vga_print(inode_table[i].name);
+            fs_print(inode_table[i].name);
             uint32_t j;
             for (j = strlen(inode_table[i].name); j < 16; j++) {
-                vga_putchar(' ');
+                fs_putchar(' ');
             }
             
             /* Print parent */
             uint32_t p = inode_table[i].parent_inode;
             if (p < 10) {
-                vga_putchar('0' + p);
+                fs_putchar('0' + p);
             } else {
-                vga_putchar('0' + (p / 10));
-                vga_putchar('0' + (p % 10));
+                fs_putchar('0' + (p / 10));
+                fs_putchar('0' + (p % 10));
             }
-            vga_print("      ");
+            fs_print("      ");
             
             /* Print type */
             if (inode_table[i].type == XAEFS_FILE_DIRECTORY) {
-                vga_print("DIR");
+                fs_print("DIR");
             } else {
-                vga_print("FILE");
+                fs_print("FILE");
             }
-            vga_print("\n");
+            fs_print("\n");
         }
     }
-    vga_print("\n");
+    fs_print("\n");
 }

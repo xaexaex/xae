@@ -102,6 +102,28 @@ int strcmp(const char* s1, const char* s2)
 }
 
 /*
+ * strncmp() - Compare first n characters of two strings
+ * 
+ * WHAT: Compare up to n characters of two strings
+ * WHY: For partial string matching (e.g., command parsing)
+ * HOW: Compare character by character up to n bytes
+ * RETURNS: 0 if equal, <0 if s1 < s2, >0 if s1 > s2
+ */
+int strncmp(const char* s1, const char* s2, size_t n)
+{
+    if (n == 0) return 0;
+    
+    while (n > 0 && *s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+        n--;
+    }
+    
+    if (n == 0) return 0;
+    return *(const uint8_t*)s1 - *(const uint8_t*)s2;
+}
+
+/*
  * strcpy() - Copy string
  * 
  * WHAT: Copy source string to destination

@@ -44,6 +44,19 @@ void keyboard_init(void)
 }
 
 /*
+ * keyboard_has_input() - Check if keyboard has data available
+ * 
+ * WHAT: Non-blocking check for keyboard input
+ * WHY: Allows polling without blocking
+ * RETURNS: 1 if key available, 0 otherwise
+ */
+uint8_t keyboard_has_input(void)
+{
+    /* Check if data is available (bit 0 of status register) */
+    return (inb(0x64) & 0x01) != 0;
+}
+
+/*
  * keyboard_getchar() - Get one character from keyboard
  * 
  * WHAT: Wait for keypress and return ASCII character

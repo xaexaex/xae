@@ -193,3 +193,25 @@ void vga_set_color(uint8_t fg, uint8_t bg)
 {
     vga_color = vga_make_color(fg, bg);
 }
+
+/*
+ * vga_print_hex() - Print hexadecimal number
+ * 
+ * WHAT: Display a number in hexadecimal format
+ * WHY: Useful for debugging addresses and values
+ * HOW: Convert each nibble to hex digit
+ */
+void vga_print_hex(uint32_t value)
+{
+    const char* hex_chars = "0123456789ABCDEF";
+    char buffer[9];
+    buffer[8] = '\0';
+    
+    for (int i = 7; i >= 0; i--) {
+        buffer[i] = hex_chars[value & 0xF];
+        value >>= 4;
+    }
+    
+    vga_print(buffer);
+}
+
