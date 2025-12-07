@@ -148,15 +148,22 @@ runnet: $(OS_IMAGE) $(DISK_IMAGE)
 # Run with serial port for remote access
 runserial: $(OS_IMAGE) $(DISK_IMAGE)
 	@echo "=========================================="
-	@echo "XAE OS - Remote Access Mode"
+	@echo "XAE OS - Serial Remote Access"
 	@echo "=========================================="
 	@echo "Serial port redirected to TCP port 4444"
 	@echo ""
 	@echo "Connect from another terminal:"
 	@echo "  telnet localhost 4444"
 	@echo "  OR: nc localhost 4444"
+	@echo ""
+	@echo "Or use putty/minicom for better experience"
 	@echo "=========================================="
-	qemu-system-i386 -drive file=$(OS_IMAGE),format=raw,index=0,media=disk -drive file=$(DISK_IMAGE),format=raw,index=1,media=disk -serial tcp::4444,server,nowait -nographic
+	qemu-system-i386 \
+		-drive file=$(OS_IMAGE),format=raw,if=floppy \
+		-drive file=$(DISK_IMAGE),format=raw,if=ide,index=1 \
+		-boot a \
+		-serial tcp::4444,server,nowait \
+		-display none
 
 # Create persistent disk image
 $(DISK_IMAGE):

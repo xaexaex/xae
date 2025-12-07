@@ -109,9 +109,7 @@ void serial_readline(char* buffer, uint32_t max_len)
         if (c == '\b' || c == 127) {
             if (i > 0) {
                 i--;
-                serial_putchar('\b');
-                serial_putchar(' ');
-                serial_putchar('\b');
+                /* Don't echo backspace - telnet client handles it */
             }
             continue;
         }
@@ -126,7 +124,7 @@ void serial_readline(char* buffer, uint32_t max_len)
         /* Regular character */
         if (c >= 32 && c <= 126) {
             buffer[i++] = c;
-            serial_putchar(c);  /* Echo back */
+            /* Don't echo - telnet client handles local echo */
         }
     }
     

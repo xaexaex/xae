@@ -40,7 +40,8 @@ static void shell_net_print(void* session, const char* str) {
  */
 void shell_init(void) 
 {
-    shell_print("\n");
+    shell_print("\n=== XAE Shell Ready ===\n");
+    shell_print("Type 'help' for commands\n\n");
 }
 
 /*
@@ -451,6 +452,10 @@ static void parse_and_execute(char* cmd)
  */
 void shell_run(void) 
 {
+    /* Print welcome banner to serial (VGA already has kernel banner) */
+    serial_print("\r\n=== XAE OS File System ===\r\n");
+    serial_print("Type 'help' for commands\r\n\r\n");
+    
     while (1) {
         /* Show prompt */
         shell_print(current_path);
