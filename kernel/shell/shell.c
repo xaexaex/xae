@@ -11,6 +11,7 @@
 #include "include/xaefs.h"
 #include "include/editor.h"
 #include "include/serial.h"
+#include "include/auth.h"
 
 #define CMD_BUFFER_SIZE 256
 #define PATH_BUFFER_SIZE 128
@@ -448,13 +449,89 @@ static void parse_and_execute(char* cmd)
 }
 
 /*
+ * shell_login() - Handle user authentication
+ * Returns 1 if login successful, 0 otherwise
+ */
+static uint8_t shell_login(void) 
+{
+    char username[32];
+    char password[64];
+    uint8_t attempts = 0;
+    const uint8_t MAX_ATTEMPTS = 3;
+    
+    /* Small delay for connection to stabilize */
+    for (volatile int i = 0; i < 100000; i++);
+    
+    shell_print("\r\n=== XAE OS Login ===\r\n");
+    shell_print("Default: admin/admin123 or user/password\r\n\r\n");
+    
+    while (attempts < MAX_ATTEMPTS) {
+        shell_print("Username: ");
+        
+        /* Read username - wait for actual input */
+        while (1) {
+            if (serial_can_read()) {
+                serial_readline(username, sizeof(username));
+                if (username[0] != '\0') break;  /* Only break if we got data */
+            } else if (keyboard_has_input()) {
+                keyboard_readline(username, sizeof(username));
+                if (username[0] != '\0') break;
+            }
+            for (volatile int i = 0; i < 1000; i++);
+        }
+        
+        shell_print("Password: ");
+        
+        /* Read password - wait for actual input */
+        while (1) {
+            if (serial_can_read()) {
+                serial_readline(password, sizeof(password));
+                if (password[0] != '\0') break;  /* Only break if we got data */
+            } else if (keyboard_has_input()) {
+                keyboard_readline(password, sizeof(password));
+                if (password[0] != '\0') break;
+            }
+            for (volatile int i = 0; i < 1000; i++);
+        }
+        
+        /* Verify credentials */
+        if (auth_verify(username, password)) {
+            shell_print("\r\nLogin successful! Welcome, ");
+            shell_print(username);
+            shell_print("\r\n\r\n");
+            return 1;
+        }
+        
+        attempts++;
+        if (attempts < MAX_ATTEMPTS) {
+            shell_print("\r\nLogin failed. Please try again.\r\n\r\n");
+        }
+    }
+    
+    shell_print("\r\nToo many failed attempts. Access denied.\r\n");
+    return 0;
+}
+
+/*
  * shell_run() - Main shell loop
  */
 void shell_run(void) 
 {
-    /* Print welcome banner to serial (VGA already has kernel banner) */
-    serial_print("\r\n=== XAE OS File System ===\r\n");
-    serial_print("Type 'help' for commands\r\n\r\n");
+    /* Require login - always for now */
+    static uint8_t logged_in = 0;
+    
+    if (!logged_in) {
+        if (!shell_login()) {
+            /* Login failed - exit */
+            shell_print("\r\nExiting...\r\n");
+            return;
+        }
+        logged_in = 1;
+    }
+    
+    /* Print welcome banner */
+    shell_print("=== XAE OS File System ===\r\n");
+    shell_print("Type 'help' for commands\r\n\r\n");
     
     while (1) {
         /* Show prompt */
