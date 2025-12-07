@@ -29,12 +29,17 @@ static void editor_print(const char* str) {
  * editor_readline() - Read input from either serial or keyboard
  */
 static void editor_readline(char* buffer, uint32_t max_len) {
-    /* Check serial first (remote users) */
-    if (serial_can_read()) {
-        serial_readline(buffer, max_len);
-    } else {
-        /* Fallback to keyboard (local users) */
-        keyboard_readline(buffer, max_len);
+    /* Wait for input from either source */
+    while (1) {
+        if (serial_can_read()) {
+            serial_readline(buffer, max_len);
+            break;
+        } else if (keyboard_has_input()) {
+            keyboard_readline(buffer, max_len);
+            break;
+        }
+        /* Small delay to prevent CPU spinning */
+        for (volatile int i = 0; i < 1000; i++);
     }
 }
 
