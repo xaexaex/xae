@@ -40,6 +40,31 @@ void serial_init(void)
     
     /* IRQs enabled, RTS/DSR set */
     outb(COM1_PORT + 4, 0x0B);
+    
+    /* Send telnet control codes to disable local echo */
+    /* Wait for port to be ready, then send IAC WILL ECHO */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 255);  /* IAC */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 251);  /* WILL */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 1);    /* ECHO */
+    
+    /* IAC WILL SUPPRESS-GO-AHEAD */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 255);  /* IAC */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 251);  /* WILL */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 3);    /* SUPPRESS-GO-AHEAD */
+    
+    /* IAC DO SUPPRESS-GO-AHEAD */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 255);  /* IAC */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 253);  /* DO */
+    while (!(inb(COM1_PORT + 5) & 0x20));
+    outb(COM1_PORT, 3);    /* SUPPRESS-GO-AHEAD */
 }
 
 /*
@@ -56,6 +81,17 @@ int serial_can_write(void)
 int serial_can_read(void) 
 {
     return inb(COM1_PORT + 5) & 0x01;
+}
+
+/*
+ * serial_flush_input() - Drain any pending RX bytes
+ * Use before prompting to discard stale input (e.g., keystrokes sent before prompts)
+ */
+void serial_flush_input(void)
+{
+    while (serial_can_read()) {
+        (void)inb(COM1_PORT);
+    }
 }
 
 /*
@@ -109,22 +145,25 @@ void serial_readline(char* buffer, uint32_t max_len)
         if (c == '\b' || c == 127) {
             if (i > 0) {
                 i--;
-                /* Don't echo backspace - telnet client handles it */
             }
             continue;
         }
         
-        /* Handle newline */
+        /* Handle newline (consume optional CRLF pair) */
         if (c == '\r' || c == '\n') {
-            serial_putchar('\r');
-            serial_putchar('\n');
+            if (c == '\r' && serial_can_read()) {
+                char next = serial_getchar();
+                if (next != '\n') {
+                    /* Put back if it's not part of CRLF */
+                    /* Simple fallback: ignore since buffering is minimal */
+                }
+            }
             break;
         }
         
-        /* Regular character */
+        /* Regular character - telnet already echoes, don't echo again */
         if (c >= 32 && c <= 126) {
             buffer[i++] = c;
-            /* Don't echo - telnet client handles local echo */
         }
     }
     

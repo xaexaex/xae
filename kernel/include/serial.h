@@ -24,6 +24,9 @@ int serial_can_write(void);
 /* Check if serial port has received data */
 int serial_can_read(void);
 
+/* Drain any pending RX bytes */
+void serial_flush_input(void);
+
 /* Write a character to serial port */
 void serial_putchar(char c);
 

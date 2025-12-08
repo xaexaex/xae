@@ -461,35 +461,44 @@ static uint8_t shell_login(void)
     
     /* Small delay for connection to stabilize */
     for (volatile int i = 0; i < 100000; i++);
+
+    /* Drop any bytes that arrived before we printed prompts */
+    serial_flush_input();
     
     shell_print("\r\n=== XAE OS Login ===\r\n");
     shell_print("Default: admin/admin123 or user/password\r\n\r\n");
     
     while (attempts < MAX_ATTEMPTS) {
-        shell_print("Username: ");
+        shell_print("\r\nUsername: ");
         
         /* Read username - wait for actual input */
         while (1) {
             if (serial_can_read()) {
                 serial_readline(username, sizeof(username));
-                if (username[0] != '\0') break;  /* Only break if we got data */
+                if (username[0] != '\0') break;
             } else if (keyboard_has_input()) {
                 keyboard_readline(username, sizeof(username));
-                if (username[0] != '\0') break;
+                if (username[0] != '\0') {
+                    vga_print("\n");
+                    break;
+                }
             }
             for (volatile int i = 0; i < 1000; i++);
         }
         
-        shell_print("Password: ");
+        shell_print("\r\nPassword: ");
         
         /* Read password - wait for actual input */
         while (1) {
             if (serial_can_read()) {
                 serial_readline(password, sizeof(password));
-                if (password[0] != '\0') break;  /* Only break if we got data */
+                if (password[0] != '\0') break;
             } else if (keyboard_has_input()) {
                 keyboard_readline(password, sizeof(password));
-                if (password[0] != '\0') break;
+                if (password[0] != '\0') {
+                    vga_print("\n");
+                    break;
+                }
             }
             for (volatile int i = 0; i < 1000; i++);
         }
@@ -548,9 +557,11 @@ void shell_run(void)
             /* Check for input */
             if (serial_can_read()) {
                 serial_readline(cmd_buffer, CMD_BUFFER_SIZE);
+                /* Don't print newline - let command output handle it */
                 break;
             } else if (keyboard_has_input()) {
                 keyboard_readline(cmd_buffer, CMD_BUFFER_SIZE);
+                vga_print("\n");
                 break;
             }
             
